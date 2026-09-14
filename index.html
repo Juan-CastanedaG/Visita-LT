@@ -245,6 +245,27 @@
   .pdfplace .pp-btns{display:flex;gap:8px;justify-content:flex-end;margin-top:4px}
   .pdfplace .pp-btns button{border:none;background:#eee;border-radius:9px;padding:9px 12px;font-weight:700;font-size:13px}
   .pdfplace .pp-btns .ok{background:var(--epm,#2f6d20);color:#fff}
+
+  /* ===== Info de la LT ===== */
+  #iltView{position:fixed;inset:0;z-index:70;background:#f4f6f8;display:none;overflow:auto}
+  .ilt-top{position:sticky;top:0;z-index:5;background:var(--epm-d);color:#fff;display:flex;align-items:center;gap:10px;padding:10px 12px}
+  .ilt-top .mbtn{background:#fff;border:none;border-radius:9px;padding:8px 11px;font-weight:700;color:var(--epm-d)}
+  .ilt-title{font-weight:800}
+  #iltBody{padding:12px;padding-bottom:40px}
+  .ilt-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+  .ilt-bar select{flex:1;min-width:150px;padding:8px;border:1px solid var(--line);border-radius:9px;font-size:14px;background:#fff}
+  .ilt-bar button,.ilt-bar2 button{border:none;background:#e7eef0;border-radius:9px;padding:8px 11px;font-weight:700;font-size:13px}
+  .ilt-bar2{display:flex;gap:10px;align-items:center;margin-bottom:8px}
+  .ilt-bar2 button{background:var(--epm,#2f6d20);color:#fff}
+  .ilt-n{color:var(--muted);font-size:13px}
+  .ilt-empty{color:var(--muted);text-align:center;padding:34px 12px}
+  .ilt-tblwrap{overflow:auto;border:1px solid var(--line);border-radius:10px;background:#fff}
+  .ilt-tbl{border-collapse:collapse;width:100%;font-size:13px}
+  .ilt-tbl th{position:sticky;top:0;background:#eef3ee;color:var(--epm-d);padding:8px;text-align:left;white-space:nowrap;cursor:pointer;border-bottom:1px solid var(--line)}
+  .ilt-tbl td{padding:7px 8px;border-bottom:1px solid #eee;white-space:nowrap}
+  .ilt-tbl td.nm{white-space:normal;min-width:130px}
+  .ilt-tbl tr:nth-child(even) td{background:#fafbfa}
+  .ilt-tbl .mini{border:none;background:#e7eef0;border-radius:7px;padding:3px 8px}
 </style>
 </head>
 <body>
@@ -271,9 +292,17 @@
   <div class="bottombar">
     <button class="btn ghost" id="btnSites">Sitios</button>
     <button class="btn ghost" onclick="openMap()">🗺 Mapa</button>
+    <button class="btn ghost" onclick="openInfoLT()">📋 LT</button>
     <button class="btn ghost" id="btnReport">Reporte</button>
     <button class="btn acc" id="btnNewSite">+ Sitio</button>
   </div>
+</div>
+
+<!-- ============ INFO LT VIEW ============ -->
+<div id="iltView" style="display:none">
+  <header class="ilt-top"><button class="mbtn" onclick="closeInfoLT()">‹ Volver</button><div class="ilt-title">Info de la LT</div></header>
+  <div id="iltBody"></div>
+  <input type="file" id="iltFile" accept=".xlsx,.json" style="display:none" onchange="iltHandleFile(this)">
 </div>
 
 <!-- ============ MAP VIEW ============ -->
@@ -1529,6 +1558,7 @@ render();
 try{var _bl=document.getElementById('brandLogo');if(_bl)_bl.src='data:image/png;base64,'+LOGO_B64;}catch(e){}
 </script>
 <script src="map.js"></script>
+<script src="infolt.js"></script>
 <script>if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){});});}</script>
 </body>
 </html>

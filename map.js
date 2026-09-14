@@ -1,7 +1,15 @@
 /* ===== Módulo de Mapa — Torres (LT) =====
    Offline: Leaflet local + teselas cacheadas en IndexedDB.
    Carga KMZ / KML / GPX / GeoJSON. Muestra los sitios del proyecto como marcadores. */
-let _map=null,_base=null,_siteLayer=null,_overlays=[],_locMarker=null,_mapReady=false;
+let _map=null,_base=null,_siteLayer=null,_overlays=[],_locMarker=null,_mapReady=false,_curBaseKey='hibrido';
+
+/* fuentes de teselas: calles (OSM), satélite (Esri), etiquetas/vías (Esri ref) */
+const TILE_SRC={
+  osm :{url:'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',sub:'abc',prefix:'osm',max:19,attr:'© OpenStreetMap'},
+  esri:{url:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',sub:'',prefix:'esri',max:19,attr:'Imágenes © Esri'},
+  ref :{url:'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',sub:'',prefix:'ref',max:19,attr:''}
+};
+function _srcUrl(src,t){const s=src.sub?src.sub[(t.x+t.y)%src.sub.length]:'';return src.url.replace('{s}',s).replace('{z}',t.z).replace('{x}',t.x).replace('{y}',t.y);}
 
 /* ---------- IndexedDB de teselas ---------- */
 let _tdb=null;
@@ -12,20 +20,21 @@ function _tCount(){return _tdbOpen().then(db=>new Promise(res=>{const q=db.trans
 function _tClear(){return _tdbOpen().then(db=>new Promise(res=>{const q=db.transaction('t','readwrite').objectStore('t').clear();q.onsuccess=()=>res(1);q.onerror=()=>res(0);}));}
 
 /* ---------- capa base offline (IndexedDB primero, luego red) ---------- */
-function _offlineLayer(){
+function _offlineLayer(key){
+  const src=TILE_SRC[key];
   const OT=L.TileLayer.extend({
     createTile:function(coords,done){
-      const img=document.createElement('img');
-      const key=coords.z+'/'+coords.x+'/'+coords.y, url=this.getTileUrl(coords);
+      const img=document.createElement('img'); img.alt='';
+      const k=src.prefix+'/'+coords.z+'/'+coords.x+'/'+coords.y, url=this.getTileUrl(coords);
       img.onload=()=>done(null,img); img.onerror=()=>done(null,img);
-      _tGet(key).then(b=>{
+      _tGet(k).then(b=>{
         if(b){ img.src=URL.createObjectURL(b); }
-        else{ fetch(url).then(r=>{if(!r.ok)throw 0;return r.blob();}).then(bl=>{_tPut(key,bl);img.src=URL.createObjectURL(bl);}).catch(()=>{img.src=url;}); }
+        else{ fetch(url).then(r=>{if(!r.ok)throw 0;return r.blob();}).then(bl=>{_tPut(k,bl);img.src=URL.createObjectURL(bl);}).catch(()=>{img.src=url;}); }
       }).catch(()=>{img.src=url;});
       return img;
     }
   });
-  return new OT('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{subdomains:'abc',maxZoom:19,crossOrigin:true,attribution:'© OpenStreetMap'});
+  return new OT(src.url,{subdomains:src.sub||'abc',maxZoom:src.max,crossOrigin:true,attribution:src.attr});
 }
 
 /* ---------- abrir / cerrar ---------- */
@@ -41,7 +50,11 @@ function closeMap(){
 }
 function _initMap(){
   _map=L.map('map',{zoomControl:true}).setView([6.2442,-75.5812],12);
-  _base=_offlineLayer().addTo(_map);
+  const calles=_offlineLayer('osm'), satelite=_offlineLayer('esri');
+  const hibrido=L.layerGroup([_offlineLayer('esri'),_offlineLayer('ref')]);
+  hibrido.addTo(_map); _curBaseKey='hibrido';           // híbrido por defecto
+  L.control.layers({'Híbrido (satélite)':hibrido,'Satélite':satelite,'Calles':calles},null,{collapsed:true,position:'topright'}).addTo(_map);
+  _map.on('baselayerchange',e=>{ _curBaseKey = e.name.indexOf('Híbrido')>=0?'hibrido':(e.name.indexOf('Satélite')>=0?'esri':'osm'); });
   mapShowSites(true);
   setTimeout(()=>_map.invalidateSize(),80);
 }
@@ -227,21 +240,21 @@ function _areaTiles(){
 }
 async function mapDownloadArea(){
   if(!_map)return;
-  const list=_areaTiles();
-  const mb=(list.length*22/1024).toFixed(1);
-  if(!confirm('Descargar el mapa de esta vista (zoom '+_map.getZoom()+' hasta +3):\n\n'+list.length+' teselas · ~'+mb+' MB\n\nHazlo con wifi/buena señal. ¿Continuar?'))return;
+  const srcKeys = _curBaseKey==='hibrido'?['esri','ref'] : _curBaseKey==='esri'?['esri'] : ['osm'];
+  const tiles=_areaTiles();
+  const jobs=[]; srcKeys.forEach(k=>tiles.forEach(t=>jobs.push({k,t})));
+  const mb=(jobs.length*22/1024).toFixed(1);
+  if(!confirm('Descargar el mapa de esta vista (zoom '+_map.getZoom()+' hasta +3)\ncapa: '+srcKeys.join(' + ')+'\n\n'+jobs.length+' teselas · ~'+mb+' MB\n\nHazlo con wifi. ¿Continuar?'))return;
   const bar=document.getElementById('mapProg'), fill=document.getElementById('mapProgFill'), lbl=document.getElementById('mapProgLbl');
   bar.style.display='block'; let done=0,ok=0,fail=0,idx=0;
   async function worker(){
-    while(idx<list.length){
-      const t=list[idx++], key=t.z+'/'+t.x+'/'+t.y;
+    while(idx<jobs.length){
+      const j=jobs[idx++], src=TILE_SRC[j.k], key=src.prefix+'/'+j.t.z+'/'+j.t.x+'/'+j.t.y;
       try{
-        const have=await _tGet(key);
-        if(have){ ok++; }
-        else{ const s='abc'[(t.x+t.y)%3]; const r=await fetch('https://'+s+'.tile.openstreetmap.org/'+t.z+'/'+t.x+'/'+t.y+'.png');
-          if(r.ok){ await _tPut(key,await r.blob()); ok++; } else fail++; }
+        if(await _tGet(key)){ ok++; }
+        else{ const r=await fetch(_srcUrl(src,j.t)); if(r.ok){ await _tPut(key,await r.blob()); ok++; } else fail++; }
       }catch(e){ fail++; }
-      done++; if(done%4===0||done===list.length){ fill.style.width=Math.round(done/list.length*100)+'%'; lbl.textContent=done+'/'+list.length; }
+      done++; if(done%4===0||done===jobs.length){ fill.style.width=Math.round(done/jobs.length*100)+'%'; lbl.textContent=done+'/'+jobs.length; }
     }
   }
   await Promise.all(Array.from({length:6},worker));
