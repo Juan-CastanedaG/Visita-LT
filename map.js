@@ -1,7 +1,7 @@
 /* ===== Módulo de Mapa — Torres (LT) =====
    Offline: Leaflet local + teselas cacheadas en IndexedDB.
    Carga KMZ / KML / GPX / GeoJSON. Muestra los sitios del proyecto como marcadores. */
-let _map=null,_base=null,_siteLayer=null,_overlays=[],_locMarker=null,_mapReady=false,_curBaseKey='hibrido';
+let _map=null,_base=null,_siteLayer=null,_overlays=[],_locMarker=null,_mapReady=false,_curBaseKey='hibrido',_layersProj=null;
 
 /* fuentes de teselas: calles (OSM), satélite (Esri), etiquetas/vías (Esri ref) */
 const TILE_SRC={
@@ -40,6 +40,8 @@ function openMap(){
   document.getElementById('appView').style.display='none';
   document.getElementById('mapView').style.display='block';
   if(!_mapReady){ _initMap(); _mapReady=true; } else { setTimeout(()=>_map.invalidateSize(),60); }
+  const _p=(typeof curProj==='function')?curProj():null;
+  if(_p && _p.id!==_layersProj){ _clearOverlays(); _restoreLayers(); }
   _refreshTileInfo();
 }
 function closeMap(){
@@ -123,17 +125,44 @@ async function mapLoadOne(file){
     alert('Formato no soportado. Usa KMZ, KML, GPX, GeoJSON, ZIP (shapefile) o PDF.');
   }catch(e){ alert('No se pudo leer '+file.name+': '+e.message); }
 }
-function _addGeoJSON(gj,name){
-  if(!gj||!gj.features||!gj.features.length){alert('No se encontraron geometrías en "'+name+'".');return;}
-  const color='#'+('00000'+((Math.random()*0xffffff)|0).toString(16)).slice(-6);
+/* ---------- capas guardadas en IndexedDB (por proyecto) ---------- */
+let _ldb=null;
+function _ldbOpen(){return new Promise((res,rej)=>{if(_ldb)return res(_ldb);const r=indexedDB.open('lt_layers',1);r.onupgradeneeded=e=>{const db=e.target.result;if(!db.objectStoreNames.contains('l'))db.createObjectStore('l');};r.onsuccess=e=>{_ldb=e.target.result;res(_ldb);};r.onerror=()=>rej(r.error);});}
+function _lGet(k){return _ldbOpen().then(db=>new Promise(res=>{const q=db.transaction('l').objectStore('l').get(k);q.onsuccess=()=>res(q.result||null);q.onerror=()=>res(null);})).catch(()=>null);}
+function _lPut(k,v){return _ldbOpen().then(db=>new Promise(res=>{const q=db.transaction('l','readwrite').objectStore('l').put(v,k);q.onsuccess=()=>res(1);q.onerror=()=>res(0);})).catch(()=>0);}
+function _curPid(){const p=(typeof curProj==='function')?curProj():null;return p?p.id:null;}
+function _saveLayers(){ const pid=_curPid(); if(!pid)return;
+  const arr=_overlays.map(o=> o.isImg
+    ? {isImg:true,name:o.name,color:o.color,opacity:o.opacity,dataURL:o.dataURL,bounds:o.bounds,hidden:!_map.hasLayer(o.layer)}
+    : {name:o.name,color:o.color,gj:o.gj,hidden:!_map.hasLayer(o.layer)} );
+  _lPut(pid,arr); _layersProj=pid;
+}
+function _clearOverlays(){ _overlays.forEach(o=>{ if(o.layer&&_map&&_map.hasLayer(o.layer))_map.removeLayer(o.layer); }); _overlays=[]; _renderLayers(); }
+function _restoreLayers(){ const pid=_curPid(); if(!pid){_layersProj=null;return;}
+  _lGet(pid).then(arr=>{
+    if(arr&&arr.length){ arr.forEach(rec=>{
+      if(rec.isImg){ try{ const o={name:rec.name,color:rec.color||'#c0392b',isImg:true,opacity:rec.opacity||0.7,dataURL:rec.dataURL,bounds:rec.bounds}; o.layer=L.imageOverlay(rec.dataURL,rec.bounds,{opacity:o.opacity}); if(!rec.hidden)o.layer.addTo(_map); _overlays.push(o); }catch(e){} }
+      else { try{ _addLayer(rec.gj,rec.name,rec.color,rec.hidden); }catch(e){} }
+    }); _renderLayers(); }
+    _layersProj=pid;
+  }).catch(()=>{_layersProj=pid;});
+}
+function _addLayer(gj,name,color,hidden){
   const layer=L.geoJSON(gj,{
     style:{color:color,weight:3,fillOpacity:.15},
     pointToLayer:(f,ll)=>L.circleMarker(ll,{radius:6,color:'#fff',weight:2,fillColor:color,fillOpacity:1}),
     onEachFeature:(f,l)=>{const p=f.properties||{};const nm=p.name||p.Name||p.NOMBRE||p.nombre;if(nm){l.bindPopup(_esc(nm));if(f.geometry&&f.geometry.type==='Point'&&l.bindTooltip)l.bindTooltip(_esc(nm),{permanent:true,direction:'right',className:'kmzlbl',offset:[6,0]});}}
-  }).addTo(_map);
-  _overlays.push({name,layer,color});
-  try{_map.fitBounds(layer.getBounds(),{padding:[30,30]});}catch(e){}
-  _renderLayers();
+  });
+  const o={name:name,layer:layer,color:color,gj:gj,isImg:false};
+  if(!hidden)layer.addTo(_map);
+  _overlays.push(o); _renderLayers(); return o;
+}
+function _addGeoJSON(gj,name){
+  if(!gj||!gj.features||!gj.features.length){alert('No se encontraron geometrías en "'+name+'".');return;}
+  const color='#'+('00000'+((Math.random()*0xffffff)|0).toString(16)).slice(-6);
+  const o=_addLayer(gj,name,color,false);
+  try{_map.fitBounds(o.layer.getBounds(),{padding:[30,30]});}catch(e){}
+  _saveLayers();
 }
 
 /* ---------- PDF / GeoPDF ---------- */
@@ -185,12 +214,12 @@ function pdfPlace(){
   if(![sla,slo,nla,nlo].every(v=>isFinite(v))){alert('Revisa las coordenadas de las esquinas.');return;}
   const bounds=[[Math.min(sla,nla),Math.min(slo,nlo)],[Math.max(sla,nla),Math.max(slo,nlo)]];
   const ov=L.imageOverlay(_pendingPDF.dataURL,bounds,{opacity:op}).addTo(_map);
-  _overlays.push({name:_pendingPDF.name,layer:ov,color:'#c0392b',isImg:true,opacity:op});
+  _overlays.push({name:_pendingPDF.name,layer:ov,color:'#c0392b',isImg:true,opacity:op,dataURL:_pendingPDF.dataURL,bounds:bounds});
   try{_map.fitBounds(bounds,{padding:[20,20]});}catch(e){}
-  _renderLayers(); pdfCancel();
+  _renderLayers(); _saveLayers(); pdfCancel();
 }
 function mapOpacity(i,v){const o=_overlays[i];if(o&&o.isImg&&o.layer.setOpacity){o.opacity=v/100;o.layer.setOpacity(v/100);}}
-function mapSetColor(i,c){const o=_overlays[i];if(!o||o.isImg)return;o.color=c;if(o.layer.setStyle)o.layer.setStyle({color:c,fillColor:c});if(o.layer.eachLayer)o.layer.eachLayer(l=>{if(l.setStyle&&l.getRadius)l.setStyle({color:'#fff',fillColor:c,fillOpacity:1});});_renderLayers();}
+function mapSetColor(i,c){const o=_overlays[i];if(!o||o.isImg)return;o.color=c;if(o.layer.setStyle)o.layer.setStyle({color:c,fillColor:c});if(o.layer.eachLayer)o.layer.eachLayer(l=>{if(l.setStyle&&l.getRadius)l.setStyle({color:'#fff',fillColor:c,fillOpacity:1});});_renderLayers();_saveLayers();}
 function _renderLayers(){
   const box=document.getElementById('mapLayers'); if(!box)return;
   if(!_overlays.length){box.innerHTML='';return;}
@@ -200,8 +229,8 @@ function _renderLayers(){
     return '<div class="mlrow">'+sw+'<span class="nm">'+_esc(o.name)+'</span>'
     +op+'<button onclick="mapToggleLayer('+i+')">👁</button><button onclick="mapRemoveLayer('+i+')">✕</button></div>';}).join('');
 }
-function mapToggleLayer(i){const o=_overlays[i];if(!o)return;if(_map.hasLayer(o.layer))_map.removeLayer(o.layer);else o.layer.addTo(_map);}
-function mapRemoveLayer(i){const o=_overlays[i];if(!o)return;_map.removeLayer(o.layer);_overlays.splice(i,1);_renderLayers();}
+function mapToggleLayer(i){const o=_overlays[i];if(!o)return;if(_map.hasLayer(o.layer))_map.removeLayer(o.layer);else o.layer.addTo(_map);_saveLayers();}
+function mapRemoveLayer(i){const o=_overlays[i];if(!o)return;_map.removeLayer(o.layer);_overlays.splice(i,1);_renderLayers();_saveLayers();}
 
 /* ---------- parsers KML / GPX ---------- */
 function _coords(txt){return (txt||'').trim().split(/\s+/).map(t=>{const a=t.split(',');return [parseFloat(a[0]),parseFloat(a[1])];}).filter(c=>isFinite(c[0])&&isFinite(c[1]));}
