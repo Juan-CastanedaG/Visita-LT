@@ -429,6 +429,22 @@ function saveDB(){
 function _flush(){try{localStorage.setItem(KEY,JSON.stringify(DB));}catch(e){}}
 window.addEventListener('pagehide',_flush);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')_flush();});
+
+/* ===== Fotos en IndexedDB (libera el cupo de localStorage) ===== */
+let _pdb=null,_phCache={},_pWarned=false;
+function _pdbOpen(){return new Promise((res,rej)=>{if(_pdb)return res(_pdb);const r=indexedDB.open('lt_photos',1);r.onupgradeneeded=e=>{const db=e.target.result;if(!db.objectStoreNames.contains('p'))db.createObjectStore('p');};r.onsuccess=e=>{_pdb=e.target.result;res(_pdb);};r.onerror=()=>rej(r.error);});}
+function pGet(id){return _pdbOpen().then(db=>new Promise(res=>{const q=db.transaction('p').objectStore('p').get(id);q.onsuccess=()=>res(q.result||null);q.onerror=()=>res(null);})).catch(()=>null);}
+function pPut(id,data){return _pdbOpen().then(db=>new Promise(res=>{const q=db.transaction('p','readwrite').objectStore('p').put(data,id);q.onsuccess=()=>res(true);q.onerror=()=>res(false);})).catch(()=>false);}
+function pDel(id){return _pdbOpen().then(db=>new Promise(res=>{const q=db.transaction('p','readwrite').objectStore('p').delete(id);q.onsuccess=()=>res(true);q.onerror=()=>res(false);})).catch(()=>false);}
+function pNewId(){return 'ph'+Math.random().toString(36).slice(2,10)+Date.now().toString(36);}
+function pData(f){return f?(f.data||_phCache[f.id]||''):'';}
+function pWarn(){if(_pWarned)return;_pWarned=true;alert('⚠ No se pudo guardar la foto. Exporta un backup y libera espacio (🗺 Mapa → Borrar mapa offline).');}
+async function pAdd(meta,dataURL){const id=pNewId();const ok=await pPut(id,dataURL);if(ok)return Object.assign({id:id},meta);pWarn();return Object.assign({data:dataURL},meta);}
+async function pPreload(list){for(const f of list){if(f&&f.id&&_phCache[f.id]==null){_phCache[f.id]=await pGet(f.id)||'';}}}
+function pClearCache(){_phCache={};}
+function _allPhotos(scope){const out=[];(scope||DB.proyectos).forEach(p=>{(p.sitios||[]).forEach(s=>(s.fotos||[]).forEach(f=>out.push(f)));(p.fotos||[]).forEach(f=>out.push(f));});return out;}
+function pHydrate(root){(root||document).querySelectorAll('img.phimg[data-pid]').forEach(img=>{const id=img.getAttribute('data-pid');if(!id)return;if(_phCache[id]){img.src=_phCache[id];return;}pGet(id).then(d=>{if(d)img.src=d;});});}
+async function _migratePhotos(){let changed=false;for(const f of _allPhotos()){if(f&&f.data&&!f.id){const id=pNewId();if(await pPut(id,f.data)){f.id=id;delete f.data;changed=true;}else break;}}if(changed){try{saveDB();}catch(e){}if(typeof render==='function'){render();pHydrate();}}}
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
 
 function curProj(){return DB.proyectos.find(p=>p.id===DB.actProj)||null;}
@@ -459,6 +475,7 @@ function render(){
 
   host().innerHTML = formHTML(s);
   bindForm(s);
+  pHydrate();
 }
 
 function emptyState(t,d,btnTxt,btnId){
@@ -630,7 +647,7 @@ function photosHTML(s){
   if(!s.fotos.length) return '<div style="color:var(--muted);font-size:12.5px;text-align:center;padding:8px">Sin fotos aún.</div>';
   return s.fotos.map((f,i)=>`<div class="photoitem">
     <div class="thumb">
-      <img src="${f.data}" alt="foto ${i+1}" onclick="annotate(${i})">
+      <img class="phimg" data-pid="${f.id||''}" src="${f.data||''}" alt="foto ${i+1}" onclick="annotate(${i})">
       <button class="del" onclick="delPhoto(${i})">×</button>
       <button class="draw" onclick="annotate(${i})">✎ Dibujar</button>
     </div>
@@ -811,7 +828,7 @@ function handleFiles(files){
   const arr=Array.from(files);let left=arr.length;
   arr.forEach(file=>{
     const r=new FileReader();
-    r.onload=()=>{ resizeImg(r.result,1600,d=>{ s.fotos.push({data:d,ts:Date.now(),comentario:''}); if(--left===0){saveDB();render();} }); };
+    r.onload=()=>{ resizeImg(r.result,1600,async d=>{ const f=await pAdd({ts:Date.now(),comentario:''},d); s.fotos.push(f); if(--left===0){saveDB();render();pHydrate();} }); };
     r.readAsDataURL(file);
   });
 }
@@ -825,7 +842,7 @@ function resizeImg(src,max,cb){
     cb(c.toDataURL('image/jpeg',0.82));
   };img.src=src;
 }
-function delPhoto(i){const s=curSite();if(!s)return;if(!confirm('¿Eliminar esta foto?'))return;s.fotos.splice(i,1);saveDB();render();}
+function delPhoto(i){const s=curSite();if(!s)return;if(!confirm('¿Eliminar esta foto?'))return;const f=s.fotos[i];if(f&&f.id)pDel(f.id);s.fotos.splice(i,1);saveDB();render();}
 
 /* ---- Dibujo sobre fotos (modelo por objetos: editables) ---- */
 const ANNO_COLORS=['#e02424','#f59e0b','#facc15','#16a34a','#38bdf8','#2563eb','#1e3a8a','#7c3aed','#db2777','#ffffff','#111111'];
@@ -881,7 +898,7 @@ function annotate(i){
     cv.width=img.width;cv.height=img.height;cv.style.height=(img.height*sc)+'px';
     anno.ctx=cv.getContext('2d');anno.canvas=cv;anno.img=img;annoRedraw();attachDraw(cv);
   };
-  img.src=s.fotos[i].data;
+  (s.fotos[i].data?Promise.resolve(s.fotos[i].data):pGet(s.fotos[i].id)).then(d=>{img.src=d||'';});
 }
 function annoTool(t,el){anno.tool=t;if(t!=='icon')anno.icon=null;if(t!=='select')anno.sel=-1;toolActive(el);annoRedraw();}
 function annoIcon(id,el){anno.tool='icon';anno.icon=id;anno.sel=-1;toolActive(el);annoRedraw();}
@@ -891,7 +908,7 @@ function annoSize(v,el){anno.size=v;document.querySelectorAll('#annoModal .anno-
 function annoUndo(){anno.objs.pop();anno.sel=-1;annoRedraw();}
 function annoClear(){anno.objs=[];anno.sel=-1;annoRedraw();}
 function closeAnno(){const m=document.getElementById('annoModal');if(m)m.remove();}
-function saveAnno(){const s=curSite();if(!s||anno.i<0)return;anno.sel=-1;annoRedraw();s.fotos[anno.i].data=anno.canvas.toDataURL('image/jpeg',0.85);const c=document.getElementById('annoCmt');if(c)s.fotos[anno.i].comentario=c.value;saveDB();closeAnno();render();}
+function saveAnno(){const s=curSite();if(!s||anno.i<0)return;anno.sel=-1;annoRedraw();{const _u=anno.canvas.toDataURL('image/jpeg',0.85);const _f=s.fotos[anno.i];if(_f.id){pPut(_f.id,_u);_phCache[_f.id]=_u;}else{_f.data=_u;}}const c=document.getElementById('annoCmt');if(c)s.fotos[anno.i].comentario=c.value;saveDB();closeAnno();render();}
 
 /* --- selección/edición --- */
 function selResize(f){if(anno.sel<0)return;const o=anno.objs[anno.sel];
@@ -1059,9 +1076,9 @@ function projPhotoPick(kind){
 function projHandleFiles(files,cat){
   const p=curProj();if(!p)return;if(!Array.isArray(p.fotos))p.fotos=[];
   const arr=Array.from(files);let left=arr.length;
-  arr.forEach(file=>{const r=new FileReader();r.onload=()=>{resizeImg(r.result,1600,d=>{p.fotos.push({data:d,ts:Date.now(),comentario:'',categoria:cat});if(--left===0){saveDB();openProjPhotos();}});};r.readAsDataURL(file);});
+  arr.forEach(file=>{const r=new FileReader();r.onload=()=>{resizeImg(r.result,1600,async d=>{const f=await pAdd({ts:Date.now(),comentario:'',categoria:cat},d);p.fotos.push(f);if(--left===0){saveDB();openProjPhotos();}});};r.readAsDataURL(file);});
 }
-function projDelPhoto(i){const p=curProj();if(!p||!p.fotos[i])return;if(!confirm('¿Eliminar esta foto del proyecto?'))return;p.fotos.splice(i,1);saveDB();openProjPhotos();}
+function projDelPhoto(i){const p=curProj();if(!p||!p.fotos[i])return;if(!confirm('¿Eliminar esta foto del proyecto?'))return;const f=p.fotos[i];if(f&&f.id)pDel(f.id);p.fotos.splice(i,1);saveDB();openProjPhotos();}
 function projSetComment(i,v){const p=curProj();if(!p||!p.fotos[i])return;p.fotos[i].comentario=v;saveDB();}
 function projSetCat(i,v){const p=curProj();if(!p||!p.fotos[i])return;p.fotos[i].categoria=v;saveDB();openProjPhotos();}
 function openProjPhotos(){
@@ -1071,7 +1088,7 @@ function openProjPhotos(){
     const list=p.fotos.map((f,i)=>[f,i]).filter(x=>((x[0].categoria)||'Otros')===cat);
     if(!list.length)return '';
     return `<div style="margin-top:12px"><div style="font-weight:600;color:var(--accent-d);font-size:13px;margin-bottom:4px">${cat} · ${list.length}</div>`+
-      list.map(x=>{const f=x[0],i=x[1];return `<div class="photoitem"><div class="thumb"><img src="${f.data}"><button class="del" onclick="projDelPhoto(${i})">×</button></div>
+      list.map(x=>{const f=x[0],i=x[1];return `<div class="photoitem"><div class="thumb"><img class="phimg" data-pid="${f.id||''}" src="${f.data||''}"><button class="del" onclick="projDelPhoto(${i})">×</button></div>
         <input class="cmt" type="text" placeholder="Comentario…" value="${esc(f.comentario||'')}" oninput="projSetComment(${i},this.value)">
         <select style="margin-top:4px;width:100%" onchange="projSetCat(${i},this.value)">${FOTO_CATS.map(c=>`<option ${c===((f.categoria)||'Otros')?'selected':''}>${c}</option>`).join('')}</select></div>`;}).join('')+`</div>`;
   }).join('');
@@ -1083,6 +1100,7 @@ function openProjPhotos(){
       <button class="btn acc" style="flex:1" onclick="projPhotoPick('cam')">📷 Cámara</button>
       <button class="btn acc" style="flex:1" onclick="projPhotoPick('gal')">🖼 Galería</button></div>
     ${p.fotos.length?gal:'<div style="color:var(--muted);text-align:center;padding:12px">Sin fotos del proyecto aún.</div>'}`,true);
+  pHydrate();
 }
 function openProjMeta(id){
   const p=DB.proyectos.find(x=>x.id===id);if(!p)return;
@@ -1111,19 +1129,22 @@ function saveProjMeta(id){
   saveDB();closeModal();render();
 }
 
-function exportJSON(){  try{
-    const out=Object.assign({},DB,{app:APP_ID,schema:SCHEMA_VER,exportedAt:new Date().toISOString()});
+async function exportJSON(){  try{
+    await pPreload(_allPhotos());
+    const out=JSON.parse(JSON.stringify(Object.assign({},DB,{app:APP_ID,schema:SCHEMA_VER,exportedAt:new Date().toISOString()})));
+    _allPhotos(out.proyectos).forEach(f=>{ if(f.id){ f.data=_phCache[f.id]||f.data||''; delete f.id; } });
     const blob=new Blob([JSON.stringify(out,null,2)],{type:'application/json'});
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');
     a.href=url;a.download='backup-informe-torres-'+new Date().toISOString().slice(0,10)+'.json';
     document.body.appendChild(a);a.click();a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),1500);
-  }catch(e){alert('No se pudo exportar el backup: '+e.message);}
+    pClearCache();
+  }catch(e){pClearCache();alert('No se pudo exportar el backup: '+e.message);}
 }
 function importJSON(file){
   const r=new FileReader();
-  r.onload=()=>{
+  r.onload=async()=>{
     let data;
     try{data=JSON.parse(r.result);}catch(e){alert('El archivo no es un JSON válido.');return;}
     if(!data||!Array.isArray(data.proyectos)){alert('No parece un backup de esta app (falta la lista de proyectos).');return;}
@@ -1134,7 +1155,10 @@ function importJSON(file){
     else { data.proyectos.forEach(p=>{p.id=uid();(p.sitios||[]).forEach(s=>s.id=uid());DB.proyectos.push(p);}); }
     if(!DB.proyectos.find(p=>p.id===DB.actProj)) DB.actProj=DB.proyectos[0]?.id||null;
     const p=curProj(); DB.actSite=(p&&p.sitios[0])?p.sitios[0].id:null;
-    migrate();saveDB();closeModal();render();window.scrollTo(0,0);
+    migrate();
+    await _migratePhotos();
+    try{saveDB();}catch(e){}
+    closeModal();render();pHydrate();window.scrollTo(0,0);
     alert('Backup importado: '+data.proyectos.length+' proyecto(s).');
   };
   r.readAsText(file);
@@ -1159,9 +1183,10 @@ function switchSite(id){DB.actSite=id;saveDB();closeModal();render();window.scro
 function delSite(id){if(!confirm('¿Eliminar este sitio?'))return;const p=curProj();p.sitios=p.sitios.filter(x=>x.id!==id);if(DB.actSite===id)DB.actSite=p.sitios[0]?.id||null;saveDB();openSites();render();}
 
 /* ===================== REPORTE ===================== */
-function openReport(){
+async function openReport(){
   const p=curProj();if(!p||!p.sitios.length){alert('No hay sitios para reportar.');return;}
-  document.getElementById('reportView').innerHTML=reportHTML(p,p.sitios);
+  await pPreload(_allPhotos([p]));
+  document.getElementById('reportView').innerHTML=reportHTML(p,p.sitios); pClearCache();
   document.getElementById('reportView').style.display='block';
   document.getElementById('appView').style.display='none';
   window.scrollTo(0,0);
@@ -1385,7 +1410,7 @@ function buildEpmDocxEntries(cfg){
     });
     if(s.fotos&&s.fotos.length){
       body+=_para(_run('Registro fotográfico',{b:true,color:'2F6D20',sz:16}),{after:20});
-      s.fotos.forEach(f=>{const im=addImg(f.data);if(im){body+=_figure(im.rid,im.dim);body+=_figCaption((s.tituloCorto||s.titulo)+(f.comentario?(' — '+f.comentario):''),'Elaboración propia');}});
+      s.fotos.forEach(f=>{const im=addImg(pData(f));if(im){body+=_figure(im.rid,im.dim);body+=_figCaption((s.tituloCorto||s.titulo)+(f.comentario?(' — '+f.comentario):''),'Elaboración propia');}});
     }
   });
   if(cfg.projFotos&&cfg.projFotos.length){
@@ -1393,7 +1418,7 @@ function buildEpmDocxEntries(cfg){
     const _cats={};cfg.projFotos.forEach(f=>{const c=f.categoria||'Otros';(_cats[c]=_cats[c]||[]).push(f);});
     Object.keys(_cats).forEach(cat=>{
       body+=_para(_run(cat,{}),{style:'Heading2'});
-      _cats[cat].forEach(f=>{const im=addImg(f.data);if(im){body+=_figure(im.rid,im.dim);body+=_figCaption(cat+(f.comentario?(' — '+f.comentario):''),'Elaboración propia');}});
+      _cats[cat].forEach(f=>{const im=addImg(pData(f));if(im){body+=_figure(im.rid,im.dim);body+=_figCaption(cat+(f.comentario?(' — '+f.comentario):''),'Elaboración propia');}});
     });
   }
   body+=_sectPr();
@@ -1442,15 +1467,17 @@ function torresCfg(p){
   });
   return {titulo:p.nombre||'Proyecto',subtitulo:p.epmSub||'Recorrido de campo — Sitios de torre',anexoTipo:p.epmAnexo||'Obras Civiles',codigo:p.epmCodigo||p.contrato||'RGIS-FO-R15-CIV-000',area:p.epmArea||'Área Planeación y Formulación Proyectos T&D Energía',fecha:p.epmFecha||mesAnio(),logoB64:LOGO_B64,metaRows:meta,summary,projFotos:(p.fotos||[]),sites:S};
 }
-function exportWord(){
+async function exportWord(){
   const p=curProj();if(!p||!p.sitios.length){alert('No hay sitios para exportar.');return;}
   try{
+    await pPreload(_allPhotos([p]));
     const blob=new Blob(zipChunks(buildEpmDocxEntries(torresCfg(p))),{type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
     const url=URL.createObjectURL(blob);const a=document.createElement('a');
     const nm=(p.nombre||'proyecto').replace(/[^\w\- ]+/g,'').trim().replace(/\s+/g,'-')||'proyecto';
     a.href=url;a.download='Informe-'+nm+'.docx';document.body.appendChild(a);a.click();a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),1500);
-  }catch(e){alert('No se pudo generar el Word: '+e.message);}
+    pClearCache();
+  }catch(e){pClearCache();alert('No se pudo generar el Word: '+e.message);}
 }
 
 
@@ -1539,7 +1566,7 @@ function siteReport(s){
   const vanos=(vano(s.vanos.arriba,'Aguas arriba')+vano(s.vanos.abajo,'Aguas abajo'));
   const vanosSec=vanos?`<div class="rpt-sec"><h5>Vanos adyacentes</h5>${vanos}</div>`:'';
   const obs=(s.obs&&s.obs.trim())?`<div class="rpt-sec"><h5>Observaciones</h5><div class="kv">${esc(s.obs)}</div></div>`:'';
-  const fotos=s.fotos.length?`<div class="rpt-sec"><h5>Registro fotográfico</h5><div class="rpt-photos">${s.fotos.map(f=>`<figure style="margin:0"><img src="${f.data}">${f.comentario?`<figcaption style="font-size:11.5px;color:#444;margin-top:3px">${esc(f.comentario)}</figcaption>`:''}</figure>`).join('')}</div></div>`:'';
+  const fotos=s.fotos.length?`<div class="rpt-sec"><h5>Registro fotográfico</h5><div class="rpt-photos">${s.fotos.map(f=>`<figure style="margin:0"><img src="${pData(f)}">${f.comentario?`<figcaption style="font-size:11.5px;color:#444;margin-top:3px">${esc(f.comentario)}</figcaption>`:''}</figure>`).join('')}</div></div>`:'';
   const coord=s.data.lat?`${s.data.lat}, ${s.data.lon}${s.data.elev?' · '+s.data.elev+' m':''}`:'coordenadas no registradas';
   return `<div class="rpt-site">
     <h2>${esc(s.sitioId||'(sin ID)')} ${s.data.variante?`· ${esc(s.data.variante)}`:''}</h2>
@@ -1556,6 +1583,8 @@ function fdatetime(v){try{const d=new Date(v);return d.toLocaleString('es-CO',{d
 loadDB();
 render();
 try{var _bl=document.getElementById('brandLogo');if(_bl)_bl.src='data:image/png;base64,'+LOGO_B64;}catch(e){}
+pHydrate();
+_migratePhotos();
 </script>
 <script src="map.js"></script>
 <script src="infolt.js"></script>
