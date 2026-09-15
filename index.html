@@ -278,6 +278,14 @@
   .datos-card .dnote{font-size:12px;color:var(--muted);margin-top:8px}
   .leaflet-tooltip.kmzlbl{background:rgba(255,255,255,.88);border:none;box-shadow:0 0 3px rgba(0,0,0,.45);padding:1px 5px;font-size:11px;font-weight:700;color:#10202e;border-radius:4px}
   .leaflet-tooltip.kmzlbl:before{display:none}
+  .phshare{display:block;width:100%;margin-top:4px;padding:8px;border:1px solid var(--line);background:#fff;border-radius:8px;font-size:12.5px;font-weight:600}
+  .phshare.wide{margin-top:10px;background:#eef4ee;color:var(--epm-d);border-color:#cfe6c2}
+  #saveFab{position:fixed;right:14px;bottom:140px;z-index:46;background:var(--accent);color:#fff;border:none;border-radius:26px;padding:14px 20px;font-weight:800;font-size:15px;box-shadow:0 4px 14px rgba(0,0,0,.28)}
+  .readtop{display:flex;align-items:center;gap:8px;margin:2px 0 10px}
+  .readtop .rtitle{flex:1;font-weight:700;font-size:14px;color:var(--epm-d);text-align:center;line-height:1.2}
+  .readnav{display:flex;gap:8px;margin-bottom:10px}
+  .readnav .nav{flex:1;padding:9px;border:1px solid var(--line);background:#fff;border-radius:9px;font-weight:600}
+  .readnav .nav[disabled]{opacity:.4}
 </style>
 </head>
 <body>
@@ -288,7 +296,7 @@
     <span class="brandpill"><img id="brandLogo" alt="EPM"></span>
     <div class="brand">Informe de Campo<small>Sitios de torre · líneas de transmisión</small></div>
     <div class="spacer"></div>
-    <span class="verbadge" id="verBadge">v10</span>
+    <span class="verbadge" id="verBadge">v12</span>
     <button class="icon" id="btnProjects">Proyectos</button>
   </header>
 
@@ -302,6 +310,7 @@
     <!-- rendered here -->
   </main>
 
+  <button id="saveFab" onclick="saveSite()" style="display:none">💾 Guardar y cerrar</button>
   <div class="bottombar">
     <button class="btn ghost" id="btnSites">Sitios</button>
     <button class="btn ghost" onclick="openMap()">🗺 Mapa</button>
@@ -318,7 +327,7 @@
   <div class="datos-body">
     <div class="datos-card">
       <div class="dh">Versión de la app</div>
-      <div class="dv">Estás en <b id="datosVer">v10</b>.</div>
+      <div class="dv">Estás en <b id="datosVer">v12</b>.</div>
       <button class="dbtn" onclick="checkUpdates()">🔄 Buscar actualizaciones</button>
       <div class="dnote" id="updStatus"></div>
     </div>
@@ -327,6 +336,11 @@
       <div class="dv">Guarda todos tus proyectos y fotos en un archivo, o restaura uno.</div>
       <button class="dbtn acc" onclick="exportJSON()">📤 Exportar backup</button>
       <button class="dbtn" onclick="document.getElementById('fileJSON').click()">📥 Importar backup</button>
+    </div>
+    <div class="datos-card">
+      <div class="dh">Exportar mapa (KMZ)</div>
+      <div class="dv">Un KMZ con los sitios del proyecto actual: un punto por sitio (verde=Mantener, naranja=Mover) con recomendación, identificación, observaciones y fotos. Ábrelo en Google Earth.</div>
+      <button class="dbtn acc" onclick="exportKMZ()">🗺 Exportar KMZ</button>
     </div>
     <div class="datos-card">
       <div class="dh">Almacenamiento</div>
@@ -438,7 +452,8 @@ const OPC = {
 /* ===================== ESTADO / PERSISTENCIA ===================== */
 const KEY='ivc_torres_v1';
 const APP_ID='LT', APP_NOMBRE='Líneas de transmisión (torres)', SCHEMA_VER=2;
-const APP_VER='v10';
+const APP_VER='v12';
+let _editMode=false;
 const ROLES=['Geología - Geotecnia','Estructuras - Obras Civiles','Hidrología - Hidráulica'];
 const FOTO_CATS=['Ubicación','Geología','Geotecnia','Hidráulica','Amenazas','Otros'];
 let DB={proyectos:[],actProj:null,actSite:null,app:APP_ID,schema:SCHEMA_VER};
@@ -508,13 +523,21 @@ function render(){
   const s=curSite();
   document.getElementById('siteLabel').textContent = s?(s.sitioId||'sitio nuevo'):'sin sitio';
   document.getElementById('siteCount').textContent = p?('· '+(p.sitios.length)+' sitio'+(p.sitios.length===1?'':'s')):'';
+  var _sf=document.getElementById('saveFab');if(_sf)_sf.style.display='none';
 
   if(!p){ host().innerHTML = emptyState('Crea un proyecto para empezar','Cada proyecto agrupa los sitios de torre de una línea.','Crear proyecto','btnProjects'); bind(); return; }
   if(!s){ host().innerHTML = emptyState('Sin sitio activo','Crea un sitio de torre o abre uno del listado.','+ Nuevo sitio','btnNewSite'); bind(); return; }
 
+  if(!_editMode){
+    host().innerHTML = readHTML(s);
+    bind();
+    pPreload(s.fotos||[]).then(()=>{ var rb=document.getElementById('readBody'); if(rb)rb.innerHTML=siteReport(s); pClearCache(); }).catch(function(){});
+    return;
+  }
   host().innerHTML = formHTML(s);
   bindForm(s);
   pHydrate();
+  if(_sf)_sf.style.display='block';
 }
 
 function emptyState(t,d,btnTxt,btnId){
@@ -525,6 +548,21 @@ function emptyState(t,d,btnTxt,btnId){
     <button class="btn acc" onclick="document.getElementById('${btnId}').click()">${btnTxt}</button>
   </div>`;
 }
+function readHTML(s){
+  const p=curProj(); const idx=p.sitios.indexOf(s);
+  return `<div class="readtop">
+    <button class="btn ghost sm" onclick="openSites()">‹ Sitios</button>
+    <div class="rtitle">Sitio ${idx+1} de ${p.sitios.length} · ${esc(s.sitioId||'(sin ID)')}</div>
+    <button class="btn acc sm" onclick="editSite()">✏️ Editar</button>
+  </div>
+  <div class="readnav">
+    <button class="nav" ${idx<=0?'disabled':''} onclick="gotoSite(${idx-1})">‹ Anterior</button>
+    <button class="nav" ${idx>=p.sitios.length-1?'disabled':''} onclick="gotoSite(${idx+1})">Siguiente ›</button>
+  </div>
+  <div id="readBody" class="readbody"><div style="color:var(--muted);padding:20px;text-align:center">Cargando…</div></div>`;
+}
+function editSite(){_editMode=true;render();window.scrollTo(0,0);}
+function saveSite(){saveDB();_editMode=false;render();openSites();}
 
 function formHTML(s){
   const p=curProj();
@@ -696,10 +734,33 @@ function photosHTML(s){
       <button class="draw" onclick="annotate(${i})">✎ Dibujar</button>
     </div>
     <input class="cmt" type="text" placeholder="Comentario de la foto…" value="${esc(f.comentario||'')}" oninput="setPhotoComment(${i},this.value)">
-  </div>`).join('');
+    <button class="phshare" onclick="sharePhoto(${i})">↗ Guardar en galería</button>
+  </div>`).join('')+(s.fotos.length?'<button class="phshare wide" onclick="shareAllPhotos()">↗ Guardar todas en galería</button>':'');
 }
 function setPhotoComment(i,v){const s=curSite();if(!s||!s.fotos[i])return;s.fotos[i].comentario=v;saveDB();}
 function setIdentif(v){const s=curSite();if(!s)return;s.identif=(s.identif===v?'':v);saveDB();render();}
+async function sharePhoto(i){
+  const s=curSite();if(!s||!s.fotos[i])return;
+  try{
+    const d=s.fotos[i].data||await pGet(s.fotos[i].id);
+    if(!d||d.indexOf(',')<0){alert('No se pudo leer la foto.');return;}
+    const fname=((s.sitioId||'sitio').replace(/[^\w\-]+/g,'_'))+'_'+(i+1)+'.jpg';
+    const file=new File([_b64ToBytes(d.split(',')[1])],fname,{type:'image/jpeg'});
+    if(navigator.canShare&&navigator.canShare({files:[file]})){ await navigator.share({files:[file],title:fname}); }
+    else { const u=URL.createObjectURL(file);const a=document.createElement('a');a.href=u;a.download=fname;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1500); }
+  }catch(e){ if(e&&e.name==='AbortError')return; alert('No se pudo guardar/compartir: '+e.message); }
+}
+async function shareAllPhotos(){
+  const s=curSite();if(!s||!s.fotos.length)return;
+  try{
+    await pPreload(s.fotos);
+    const files=[]; s.fotos.forEach((f,i)=>{const d=pData(f);if(d&&d.indexOf(',')>0)files.push(new File([_b64ToBytes(d.split(',')[1])],((s.sitioId||'sitio').replace(/[^\w\-]+/g,'_'))+'_'+(i+1)+'.jpg',{type:'image/jpeg'}));});
+    pClearCache();
+    if(!files.length){alert('Sin fotos.');return;}
+    if(navigator.canShare&&navigator.canShare({files})){ await navigator.share({files,title:'Fotos '+(s.sitioId||'')}); }
+    else { files.forEach(f=>{const u=URL.createObjectURL(f);const a=document.createElement('a');a.href=u;a.download=f.name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1500);}); }
+  }catch(e){ if(e&&e.name==='AbortError')return; alert('No se pudo compartir: '+e.message); }
+}
 
 /* ===================== HELPERS DE VALOR ===================== */
 function esc(x){return (x==null?'':String(x)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
@@ -847,7 +908,7 @@ function bind(){
   const b=(id,fn)=>{const e=document.getElementById(id);if(e&&!e._b){e._b=1;e.addEventListener('click',fn);}};
   b('btnProjects',openProjects);
   b('btnSites',openSites);
-  b('btnNewSite',()=>{if(!curProj()){openProjects();return;}newSite();render();window.scrollTo(0,0);});
+  b('btnNewSite',()=>{if(!curProj()){openProjects();return;}newSite();_editMode=true;render();window.scrollTo(0,0);});
   b('btnReport',openReport);
 }
 
@@ -1208,6 +1269,40 @@ function importJSON(file){
   };
   r.readAsText(file);
 }
+async function exportKMZ(){
+  const p=curProj(); if(!p||!p.sitios.length){alert('No hay sitios en el proyecto.');return;}
+  const sites=p.sitios.filter(s=>parseFloat(s.data.lat)&&parseFloat(s.data.lon));
+  if(!sites.length){alert('Ningún sitio tiene coordenadas para el KMZ.');return;}
+  try{
+    await pPreload(_allPhotos([p]));
+    const zip=new JSZip();
+    let k='<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document>';
+    k+='<name>'+_kx(p.nombre||'Sitios de torre')+'</name>';
+    k+='<Style id="mantener"><IconStyle><color>ff347a0f</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href></Icon></IconStyle></Style>';
+    k+='<Style id="mover"><IconStyle><color>ff0c54a3</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href></Icon></IconStyle></Style>';
+    k+='<Style id="sinrec"><IconStyle><color>ff888888</color><scale>1.0</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href></Icon></IconStyle></Style>';
+    let imgN=0;
+    sites.forEach((s,si)=>{
+      const lat=parseFloat(s.data.lat), lon=parseFloat(s.data.lon);
+      const st=s.rec==='mantener'?'mantener':s.rec==='mover'?'mover':'sinrec';
+      let desc='<b>Recomendación:</b> '+(s.rec==='mantener'?'MANTENER':s.rec==='mover'?'MOVER':'—')+'<br/>';
+      if(s.identif)desc+='<b>Identificación:</b> '+(s.identif==='punto'?'En el punto':'Desde la distancia')+'<br/>';
+      if(s.data.elev)desc+='<b>Elevación:</b> '+s.data.elev+' m<br/>';
+      if(s.obs&&s.obs.trim())desc+='<b>Observaciones:</b> '+s.obs.trim()+'<br/>';
+      (s.fotos||[]).forEach(f=>{const d=pData(f);if(d&&d.indexOf(',')>0){imgN++;const nm='foto'+imgN+'.jpg';zip.file('files/'+nm,_b64ToBytes(d.split(',')[1]));desc+='<img src="files/'+nm+'" width="360"/><br/>';}});
+      desc=desc.replace(/]]>/g,']] >');
+      k+='<Placemark><name>'+_kx(s.sitioId||('Sitio '+(si+1)))+'</name><styleUrl>#'+st+'</styleUrl>'
+        +'<description><![CDATA['+desc+']]></description>'
+        +'<Point><coordinates>'+lon+','+lat+',0</coordinates></Point></Placemark>';
+    });
+    k+='</Document></kml>';
+    zip.file('doc.kml',k);
+    const blob=await zip.generateAsync({type:'blob'});
+    pClearCache();
+    const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download=(p.nombre||'sitios').replace(/[^\w\-]+/g,'_')+'.kmz';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1500);
+  }catch(e){ pClearCache(); alert('No se pudo exportar el KMZ: '+e.message); }
+}
+function _kx(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function openDatos(){document.getElementById('appView').style.display='none';document.getElementById('datosView').style.display='block';var v=document.getElementById('datosVer');if(v)v.textContent=APP_VER;_datosStorage();}
 function closeDatos(){document.getElementById('datosView').style.display='none';document.getElementById('appView').style.display='block';}
 async function _datosStorage(){const el=document.getElementById('datosStorage');if(!el)return;try{if(navigator.storage&&navigator.storage.estimate){const e=await navigator.storage.estimate();const u=(e.usage/1048576).toFixed(0),q=(e.quota/1048576).toFixed(0);el.textContent=u+' MB usados'+(q>0?(' de ~'+q+' MB disponibles'):'');}else{el.textContent='No disponible en este navegador.';}}catch(e){el.textContent='—';}}
@@ -1241,8 +1336,8 @@ function openSites(){
   modal(`<h3>Sitios · ${esc(p.nombre)}</h3>${rows}
     <button class="btn acc wide" style="margin-top:8px" onclick="newSiteFromModal()">+ Nuevo sitio</button>`);
 }
-function newSiteFromModal(){newSite();closeModal();render();window.scrollTo(0,0);}
-function switchSite(id){DB.actSite=id;saveDB();closeModal();render();window.scrollTo(0,0);}
+function newSiteFromModal(){newSite();_editMode=true;closeModal();render();window.scrollTo(0,0);}
+function switchSite(id){DB.actSite=id;_editMode=false;saveDB();closeModal();render();window.scrollTo(0,0);}
 function delSite(id){if(!confirm('¿Eliminar este sitio?'))return;const p=curProj();p.sitios=p.sitios.filter(x=>x.id!==id);if(DB.actSite===id)DB.actSite=p.sitios[0]?.id||null;saveDB();openSites();render();}
 
 /* ===================== REPORTE ===================== */
