@@ -220,6 +220,8 @@
   .maptop .mbtn.dl{background:#7AD400;color:#123}
   #map{position:absolute;top:54px;bottom:0;left:0;right:0}
   .mapside{position:absolute;left:8px;bottom:10px;z-index:600;max-width:74%;display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+  .mstoggle{background:rgba(255,255,255,.95);border:none;border-radius:20px;padding:8px 14px;font-weight:700;font-size:13px;color:var(--epm-d);box-shadow:0 1px 8px rgba(0,0,0,.28)}
+  .mspanel{display:flex;flex-direction:column;gap:6px;align-items:flex-start;max-height:56vh;overflow:auto;padding-bottom:2px}
   .mti{background:rgba(255,255,255,.94);border-radius:9px;padding:6px 9px;font-size:12px;box-shadow:0 1px 8px rgba(0,0,0,.25)}
   .mbtn.sm{background:rgba(255,255,255,.94);border:none;border-radius:9px;padding:6px 9px;font-size:12px;color:#b02525;box-shadow:0 1px 8px rgba(0,0,0,.25)}
   .mlayers{background:rgba(255,255,255,.96);border-radius:9px;padding:4px 6px;font-size:12px;max-height:30vh;overflow:auto;box-shadow:0 1px 8px rgba(0,0,0,.25)}
@@ -296,7 +298,7 @@
     <span class="brandpill"><img id="brandLogo" alt="EPM"></span>
     <div class="brand">Informe de Campo<small>Sitios de torre · líneas de transmisión</small></div>
     <div class="spacer"></div>
-    <span class="verbadge" id="verBadge">v15</span>
+    <span class="verbadge" id="verBadge">v16</span>
     <button class="icon" id="btnProjects">Proyectos</button>
   </header>
 
@@ -327,7 +329,7 @@
   <div class="datos-body">
     <div class="datos-card">
       <div class="dh">Versión de la app</div>
-      <div class="dv">Estás en <b id="datosVer">v15</b>.</div>
+      <div class="dv">Estás en <b id="datosVer">v16</b>.</div>
       <button class="dbtn" onclick="checkUpdates()">🔄 Buscar actualizaciones</button>
       <div class="dnote" id="updStatus"></div>
     </div>
@@ -368,9 +370,12 @@
   </div>
   <div id="map"></div>
   <div class="mapside">
-    <div id="mapTileInfo" class="mti"></div>
-    <button class="mbtn sm" onclick="mapClearTiles()">Borrar mapa offline</button>
-    <div id="mapLayers" class="mlayers"></div>
+    <div id="msPanel" class="mspanel" style="display:none">
+      <div id="mapTileInfo" class="mti"></div>
+      <button class="mbtn sm" onclick="mapClearTiles()">Borrar mapa offline</button>
+      <div id="mapLayers" class="mlayers"></div>
+    </div>
+    <button class="mstoggle" onclick="toggleMapPanel()">🗂 <span id="msCount">Capas</span></button>
   </div>
   <div id="mapProg" class="mapprog" style="display:none"><div id="mapProgLbl">0/0</div><div class="track"><div id="mapProgFill" class="fill"></div></div></div>
   <div id="pdfPlace" class="pdfplace" style="display:none">
@@ -452,7 +457,7 @@ const OPC = {
 /* ===================== ESTADO / PERSISTENCIA ===================== */
 const KEY='ivc_torres_v1';
 const APP_ID='LT', APP_NOMBRE='Líneas de transmisión (torres)', SCHEMA_VER=2;
-const APP_VER='v15';
+const APP_VER='v16';
 let _editMode=false;
 const ROLES=['Geología - Geotecnia','Estructuras - Obras Civiles','Hidrología - Hidráulica'];
 const FOTO_CATS=['Ubicación','Geología','Geotecnia','Hidráulica','Amenazas','Otros'];

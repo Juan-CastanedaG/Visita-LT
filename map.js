@@ -220,7 +220,9 @@ function pdfPlace(){
 }
 function mapOpacity(i,v){const o=_overlays[i];if(o&&o.isImg&&o.layer.setOpacity){o.opacity=v/100;o.layer.setOpacity(v/100);}}
 function mapSetColor(i,c){const o=_overlays[i];if(!o||o.isImg)return;o.color=c;if(o.layer.setStyle)o.layer.setStyle({color:c,fillColor:c});if(o.layer.eachLayer)o.layer.eachLayer(l=>{if(l.setStyle&&l.getRadius)l.setStyle({color:'#fff',fillColor:c,fillOpacity:1});});_renderLayers();_saveLayers();}
+function toggleMapPanel(){const el=document.getElementById('msPanel');if(el)el.style.display=(el.style.display==='none'||!el.style.display)?'block':'none';}
 function _renderLayers(){
+  const _c=document.getElementById('msCount'); if(_c)_c.textContent='Capas'+(_overlays.length?(' ('+_overlays.length+')'):'');
   const box=document.getElementById('mapLayers'); if(!box)return;
   if(!_overlays.length){box.innerHTML='';return;}
   box.innerHTML='<div class="mlh">Capas cargadas</div>'+_overlays.map((o,i)=>{
