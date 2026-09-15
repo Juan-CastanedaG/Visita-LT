@@ -296,7 +296,7 @@
     <span class="brandpill"><img id="brandLogo" alt="EPM"></span>
     <div class="brand">Informe de Campo<small>Sitios de torre · líneas de transmisión</small></div>
     <div class="spacer"></div>
-    <span class="verbadge" id="verBadge">v12</span>
+    <span class="verbadge" id="verBadge">v13</span>
     <button class="icon" id="btnProjects">Proyectos</button>
   </header>
 
@@ -327,7 +327,7 @@
   <div class="datos-body">
     <div class="datos-card">
       <div class="dh">Versión de la app</div>
-      <div class="dv">Estás en <b id="datosVer">v12</b>.</div>
+      <div class="dv">Estás en <b id="datosVer">v13</b>.</div>
       <button class="dbtn" onclick="checkUpdates()">🔄 Buscar actualizaciones</button>
       <div class="dnote" id="updStatus"></div>
     </div>
@@ -420,7 +420,7 @@ const SCHEMA = [
   ]},
   { id:'hid', titulo:'Hidráulico', sub:'Cuerpos de agua, socavación, inundación', campos:[
     {id:'cuerpo', label:'Cuerpo de agua cercano', tipo:'single', op:['Ninguno','Nacimiento / manantial','Drenaje menor','Quebrada','Río','Humedal / laguna']},
-    {id:'distcuerpo', label:'Distancia al cuerpo de agua', tipo:'single', op:['> 50 m','20–50 m','< 20 m','En el cauce']},
+    {id:'distcuerpo', label:'Distancia al cuerpo de agua', tipo:'single', op:['> 50 m','20–50 m','< 20 m','En el cauce'], cond:s=>{const v=s.data['hid.cuerpo'];return !!v&&v!=='Ninguno';}},
     {id:'socav', label:'Riesgo de socavación / inundación', tipo:'single', op:['Nulo','Bajo','Medio','Alto']},
     {id:'manejoag', label:'Requiere manejo de aguas', tipo:'pill3'},
   ]},
@@ -452,7 +452,7 @@ const OPC = {
 /* ===================== ESTADO / PERSISTENCIA ===================== */
 const KEY='ivc_torres_v1';
 const APP_ID='LT', APP_NOMBRE='Líneas de transmisión (torres)', SCHEMA_VER=2;
-const APP_VER='v12';
+const APP_VER='v13';
 let _editMode=false;
 const ROLES=['Geología - Geotecnia','Estructuras - Obras Civiles','Hidrología - Hidráulica'];
 const FOTO_CATS=['Ubicación','Geología','Geotecnia','Hidráulica','Amenazas','Otros'];
@@ -604,7 +604,7 @@ function formHTML(s){
   // --- Dominios ---
   SCHEMA.forEach(dom=>{
     let inner='';
-    dom.campos.forEach(c=> inner+=fieldHTML(dom.id,c,s));
+    dom.campos.forEach(c=>{ if(c.cond&&!c.cond(s))return; inner+=fieldHTML(dom.id,c,s); });
     if(dom.id==='civ'){
       inner+=`<div class="field"><label>Cimentación — tipo recomendado</label>${multiPills('cim.tipo',OPC.cimTipo,s.cim.tipo)}</div>`;
       inner+=`<div class="field"><label>Cimentación — consideraciones</label>${multiPills('cim.cons',OPC.cimCons,s.cim.cons)}</div>`;
@@ -776,6 +776,7 @@ function pickSingle(key,v){
   if(key.startsWith('vano.')){const[,k,f]=key.split('.');s.vanos[k][f]=(s.vanos[k][f]===v?null:v);}
   else if(key.startsWith('mv.')){const f=key.split('.')[1];s.mover[f]=(s.mover[f]===v?null:v);}
   else {s.data[key]=(s.data[key]===v?null:v);}
+  if(key==='hid.cuerpo'&&(s.data[key]===null||s.data[key]==='Ninguno'))delete s.data['hid.distcuerpo'];
   saveDB();rerender();
 }
 function toggleMulti(key,v){
@@ -810,6 +811,7 @@ function siteCompleteness(s){
   items.push({k:'ID de torre',cardId:'id',ok:isFilled(s.sitioId)});
   items.push({k:'Coordenadas',cardId:'id',ok:isFilled(s.data.lat)&&isFilled(s.data.lon)});
   SCHEMA.forEach(dom=>dom.campos.forEach(c=>{
+    if(c.cond&&!c.cond(s))return;
     items.push({k:c.label,cardId:dom.id,ok:hasVal(s.data[dom.id+'.'+c.id])});
   }));
   items.push({k:'Recomendación',cardId:'rec',ok:!!s.rec});
@@ -1612,7 +1614,7 @@ function torresCfg(p){
   const summary={caption:'Resumen de recomendaciones por sitio',note:sites.length+' sitios · Mantener: '+keep+' · Mover: '+move+(none?(' · Sin recomendación: '+none):''),headers:['#','Sitio','Recomendación','Inund.','M.masa','Torr.'],grid:[600,2400,3000,1100,1150,1150],rows};
   const S=sites.map(s=>{
     const domains=[];
-    SCHEMA.forEach(dom=>{const kv=[];dom.campos.forEach(c=>{const v=s.data[dom.id+'.'+c.id];if(hasVal(v))kv.push([c.label,Array.isArray(v)?v.join(', '):String(v)]);});if(kv.length)domains.push({h:dom.titulo,kv});});
+    SCHEMA.forEach(dom=>{const kv=[];dom.campos.forEach(c=>{if(c.cond&&!c.cond(s))return;const v=s.data[dom.id+'.'+c.id];if(hasVal(v))kv.push([c.label,Array.isArray(v)?v.join(', '):String(v)]);});if(kv.length)domains.push({h:dom.titulo,kv});});
     const cimkv=[];if(s.cim.tipo.length)cimkv.push(['Tipo',s.cim.tipo.join(', ')]);if(s.cim.cons.length)cimkv.push(['Consideraciones',s.cim.cons.join(', ')]);if(cimkv.length)domains.push({h:'Cimentación',kv:cimkv});
     if(s.obras.length)domains.push({h:'Obras de estabilización / protección',kv:[['Obras',s.obras.join(', ')]]});
     const vk=[];const vano=(v,t)=>{const parts=[];if(v.terreno)parts.push('terreno '+v.terreno);if(v.cruces&&v.cruces.length)parts.push('cruza: '+v.cruces.join(', '));if(parts.length)vk.push([t,parts.join(' · ')]);};vano(s.vanos.arriba,'Aguas arriba');vano(s.vanos.abajo,'Aguas abajo');if(vk.length)domains.push({h:'Vanos adyacentes',kv:vk});

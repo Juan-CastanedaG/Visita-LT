@@ -186,12 +186,14 @@ function pdfPlace(){
   _renderLayers(); pdfCancel();
 }
 function mapOpacity(i,v){const o=_overlays[i];if(o&&o.isImg&&o.layer.setOpacity){o.opacity=v/100;o.layer.setOpacity(v/100);}}
+function mapSetColor(i,c){const o=_overlays[i];if(!o||o.isImg)return;o.color=c;if(o.layer.setStyle)o.layer.setStyle({color:c,fillColor:c});if(o.layer.eachLayer)o.layer.eachLayer(l=>{if(l.setStyle&&l.getRadius)l.setStyle({color:'#fff',fillColor:c,fillOpacity:1});});_renderLayers();}
 function _renderLayers(){
   const box=document.getElementById('mapLayers'); if(!box)return;
   if(!_overlays.length){box.innerHTML='';return;}
   box.innerHTML='<div class="mlh">Capas cargadas</div>'+_overlays.map((o,i)=>{
-    const op=o.isImg?'<input type="range" min="10" max="100" value="'+Math.round((o.opacity||0.7)*100)+'" oninput="mapOpacity('+i+',this.value)" style="width:64px;vertical-align:middle">':'';
-    return '<div class="mlrow"><span class="dot" style="background:'+o.color+'"></span><span class="nm">'+_esc(o.name)+'</span>'
+    const op=o.isImg?'<input type="range" min="10" max="100" value="'+Math.round((o.opacity||0.7)*100)+'" oninput="mapOpacity('+i+',this.value)" style="width:60px;vertical-align:middle">':'';
+    const sw=o.isImg?('<span class="dot" style="background:'+o.color+'"></span>'):('<input type="color" value="'+o.color+'" onchange="mapSetColor('+i+',this.value)" title="Color de la capa" style="width:26px;height:22px;border:none;padding:0;background:none;vertical-align:middle">');
+    return '<div class="mlrow">'+sw+'<span class="nm">'+_esc(o.name)+'</span>'
     +op+'<button onclick="mapToggleLayer('+i+')">👁</button><button onclick="mapRemoveLayer('+i+')">✕</button></div>';}).join('');
 }
 function mapToggleLayer(i){const o=_overlays[i];if(!o)return;if(_map.hasLayer(o.layer))_map.removeLayer(o.layer);else o.layer.addTo(_map);}
