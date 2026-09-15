@@ -49,7 +49,7 @@
   .projstrip .pj{font-weight:600;color:#fff}
   .projstrip .site{margin-left:auto;font-family:var(--mono);background:var(--epm);color:#fff;padding:3px 9px;border-radius:7px;font-size:12px;font-weight:600}
 
-  main{padding:12px 12px 120px;max-width:720px;margin:0 auto}
+  main{padding:12px 12px 156px;max-width:720px;margin:0 auto}
 
   /* ---- cards ---- */
   .card{background:var(--card);border:1px solid var(--line);border-radius:14px;margin:0 0 12px;overflow:hidden}
@@ -127,8 +127,8 @@
 
   /* bottom bar */
   .bottombar{position:fixed;left:0;right:0;bottom:0;z-index:45;background:#fff;border-top:1px solid var(--line);
-    padding:10px 12px;display:flex;gap:9px;box-shadow:0 -2px 12px rgba(0,0,0,.05)}
-  .bottombar .btn{flex:1}
+    padding:8px 12px;display:flex;flex-wrap:wrap;gap:8px;box-shadow:0 -2px 12px rgba(0,0,0,.05)}
+  .bottombar .btn{flex:1 1 calc(33.33% - 6px);min-width:0;padding-left:6px;padding-right:6px}
   .bottombar .badge{position:absolute;top:-9px;right:14px}
 
   /* modal */
@@ -288,7 +288,7 @@
     <span class="brandpill"><img id="brandLogo" alt="EPM"></span>
     <div class="brand">Informe de Campo<small>Sitios de torre · líneas de transmisión</small></div>
     <div class="spacer"></div>
-    <span class="verbadge" id="verBadge">v9</span>
+    <span class="verbadge" id="verBadge">v10</span>
     <button class="icon" id="btnProjects">Proyectos</button>
   </header>
 
@@ -318,7 +318,7 @@
   <div class="datos-body">
     <div class="datos-card">
       <div class="dh">Versión de la app</div>
-      <div class="dv">Estás en <b id="datosVer">v9</b>.</div>
+      <div class="dv">Estás en <b id="datosVer">v10</b>.</div>
       <button class="dbtn" onclick="checkUpdates()">🔄 Buscar actualizaciones</button>
       <div class="dnote" id="updStatus"></div>
     </div>
@@ -438,7 +438,7 @@ const OPC = {
 /* ===================== ESTADO / PERSISTENCIA ===================== */
 const KEY='ivc_torres_v1';
 const APP_ID='LT', APP_NOMBRE='Líneas de transmisión (torres)', SCHEMA_VER=2;
-const APP_VER='v9';
+const APP_VER='v10';
 const ROLES=['Geología - Geotecnia','Estructuras - Obras Civiles','Hidrología - Hidráulica'];
 const FOTO_CATS=['Ubicación','Geología','Geotecnia','Hidráulica','Amenazas','Otros'];
 let DB={proyectos:[],actProj:null,actSite:null,app:APP_ID,schema:SCHEMA_VER};
