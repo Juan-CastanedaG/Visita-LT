@@ -27,10 +27,8 @@ function _offlineLayer(key){
       const img=document.createElement('img'); img.alt='';
       const k=src.prefix+'/'+coords.z+'/'+coords.x+'/'+coords.y, url=this.getTileUrl(coords);
       img.onload=()=>done(null,img); img.onerror=()=>done(null,img);
-      _tGet(k).then(b=>{
-        if(b){ img.src=URL.createObjectURL(b); }
-        else{ fetch(url).then(r=>{if(!r.ok)throw 0;return r.blob();}).then(bl=>{_tPut(k,bl);img.src=URL.createObjectURL(bl);}).catch(()=>{img.src=url;}); }
-      }).catch(()=>{img.src=url;});
+      /* NUNCA guarda al navegar: solo lee de caché; si no está, red directa. */
+      _tGet(k).then(b=>{ img.src=b?URL.createObjectURL(b):url; }).catch(()=>{img.src=url;});
       return img;
     }
   });
@@ -127,7 +125,7 @@ function _addGeoJSON(gj,name){
   const layer=L.geoJSON(gj,{
     style:{color:color,weight:3,fillOpacity:.15},
     pointToLayer:(f,ll)=>L.circleMarker(ll,{radius:6,color:'#fff',weight:2,fillColor:color,fillOpacity:1}),
-    onEachFeature:(f,l)=>{const p=f.properties||{};const nm=p.name||p.Name||p.NOMBRE||p.nombre;if(nm)l.bindPopup(_esc(nm));}
+    onEachFeature:(f,l)=>{const p=f.properties||{};const nm=p.name||p.Name||p.NOMBRE||p.nombre;if(nm){l.bindPopup(_esc(nm));if(f.geometry&&f.geometry.type==='Point'&&l.bindTooltip)l.bindTooltip(_esc(nm),{permanent:true,direction:'right',className:'kmzlbl',offset:[6,0]});}}
   }).addTo(_map);
   _overlays.push({name,layer,color});
   try{_map.fitBounds(layer.getBounds(),{padding:[30,30]});}catch(e){}
@@ -233,7 +231,7 @@ function _tileRange(b,z){
   return {x0:Math.min(nw.x,se.x),x1:Math.max(nw.x,se.x),y0:Math.min(nw.y,se.y),y1:Math.max(nw.y,se.y)};
 }
 function _areaTiles(){
-  const b=_map.getBounds(), z0=_map.getZoom(), zMax=Math.min(z0+3,18);
+  const b=_map.getBounds(), z0=_map.getZoom(), zMax=Math.min(z0+2,18);
   const list=[];
   for(let z=z0;z<=zMax;z++){const r=_tileRange(b,z);for(let x=r.x0;x<=r.x1;x++)for(let y=r.y0;y<=r.y1;y++)list.push({z,x,y});}
   return list;
@@ -243,24 +241,34 @@ async function mapDownloadArea(){
   const srcKeys = _curBaseKey==='hibrido'?['esri','ref'] : _curBaseKey==='esri'?['esri'] : ['osm'];
   const tiles=_areaTiles();
   const jobs=[]; srcKeys.forEach(k=>tiles.forEach(t=>jobs.push({k,t})));
+  const LIMIT=4000;
+  if(jobs.length>LIMIT){ alert('Esa área es muy grande: '+jobs.length+' teselas (~'+(jobs.length*22/1024).toFixed(0)+' MB).\n\nAcércate un poco o reduce la vista y vuelve a intentar (máx. '+LIMIT+' por descarga).'); return; }
   const mb=(jobs.length*22/1024).toFixed(1);
-  if(!confirm('Descargar el mapa de esta vista (zoom '+_map.getZoom()+' hasta +3)\ncapa: '+srcKeys.join(' + ')+'\n\n'+jobs.length+' teselas · ~'+mb+' MB\n\nHazlo con wifi. ¿Continuar?'))return;
+  if(!confirm('Descargar el mapa de esta vista (zoom '+_map.getZoom()+' hasta +2)\ncapa: '+srcKeys.join(' + ')+'\n\n'+jobs.length+' teselas · ~'+mb+' MB\n\nHazlo con wifi. ¿Continuar?'))return;
   const bar=document.getElementById('mapProg'), fill=document.getElementById('mapProgFill'), lbl=document.getElementById('mapProgLbl');
-  bar.style.display='block'; let done=0,ok=0,fail=0,idx=0;
+  bar.style.display='block'; let done=0,ok=0,fail=0,idx=0,quota=false;
   async function worker(){
-    while(idx<jobs.length){
+    while(idx<jobs.length && !quota){
       const j=jobs[idx++], src=TILE_SRC[j.k], key=src.prefix+'/'+j.t.z+'/'+j.t.x+'/'+j.t.y;
       try{
         if(await _tGet(key)){ ok++; }
-        else{ const r=await fetch(_srcUrl(src,j.t)); if(r.ok){ await _tPut(key,await r.blob()); ok++; } else fail++; }
+        else{ const r=await fetch(_srcUrl(src,j.t)); if(r.ok){ const stored=await _tPut(key,await r.blob()); if(stored)ok++; else quota=true; } else fail++; }
       }catch(e){ fail++; }
       done++; if(done%4===0||done===jobs.length){ fill.style.width=Math.round(done/jobs.length*100)+'%'; lbl.textContent=done+'/'+jobs.length; }
     }
   }
   await Promise.all(Array.from({length:6},worker));
-  fill.style.width='100%'; lbl.textContent='Listo: '+ok+' ✓'+(fail?(' · '+fail+' fallidas'):'');
-  setTimeout(()=>{bar.style.display='none';fill.style.width='0';},2600);
+  fill.style.width='100%';
+  lbl.textContent= quota?'⚠ Almacenamiento lleno' : ('Listo: '+ok+' ✓'+(fail?(' · '+fail+' fallidas'):''));
+  if(quota) alert('Se llenó el almacenamiento del teléfono al descargar.\n\nBorra el mapa offline (botón de abajo) o descarga áreas más pequeñas.');
+  setTimeout(()=>{bar.style.display='none';fill.style.width='0';},2800);
   _refreshTileInfo();
 }
-function _refreshTileInfo(){ _tCount().then(n=>{const el=document.getElementById('mapTileInfo'); if(el)el.textContent=n?('🗂 '+n+' teselas guardadas (offline listo)'):'Sin mapa offline aún — usa "⬇ Zona".'; }); }
+async function _refreshTileInfo(){
+  const el=document.getElementById('mapTileInfo'); if(!el)return;
+  let n=0; try{n=await _tCount();}catch(e){}
+  let used='';
+  try{ if(navigator.storage&&navigator.storage.estimate){ const e=await navigator.storage.estimate(); used=' · '+(e.usage/1048576).toFixed(0)+' MB usados'; } }catch(e){}
+  el.textContent=(n?('🗂 '+n+' teselas offline'):'Sin mapa offline aún — usa "⬇ Zona"')+used;
+}
 async function mapClearTiles(){ if(!confirm('¿Borrar todas las teselas guardadas offline?'))return; await _tClear(); _refreshTileInfo(); alert('Mapa offline borrado.'); }

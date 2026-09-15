@@ -266,6 +266,10 @@
   .ilt-tbl td.nm{white-space:normal;min-width:130px}
   .ilt-tbl tr:nth-child(even) td{background:#fafbfa}
   .ilt-tbl .mini{border:none;background:#e7eef0;border-radius:7px;padding:3px 8px}
+
+  .verbadge{font-size:10px;color:#cfe6c2;opacity:.85;align-self:flex-start;margin-left:2px}
+  .leaflet-tooltip.kmzlbl{background:rgba(255,255,255,.88);border:none;box-shadow:0 0 3px rgba(0,0,0,.45);padding:1px 5px;font-size:11px;font-weight:700;color:#10202e;border-radius:4px}
+  .leaflet-tooltip.kmzlbl:before{display:none}
 </style>
 </head>
 <body>
@@ -277,6 +281,7 @@
     <div class="brand">Informe de Campo<small>Sitios de torre · líneas de transmisión</small></div>
     <div class="spacer"></div>
     <button class="icon" id="btnProjects">Proyectos</button>
+    <span class="verbadge">v8</span>
   </header>
 
   <div class="projstrip">
@@ -495,6 +500,11 @@ function formHTML(s){
   h+=card('id','Identificación','Sitio, coordenadas y fecha',true,`
     <div class="field"><label>ID del sitio de torre <span class="hint">Ej: T-045, V1-T012</span></label>
       <input type="text" id="f_sitioId" value="${esc(s.sitioId)}" placeholder="T-000"></div>
+    <div class="field"><label>Identificación del punto</label>
+      <div style="display:flex;gap:8px">
+        <button type="button" onclick="setIdentif('punto')" style="flex:1;padding:10px;border-radius:10px;border:1.4px solid var(--line);font-weight:600;background:${s.identif==='punto'?'var(--accent)':'transparent'};color:${s.identif==='punto'?'#fff':'inherit'}">📍 En el punto</button>
+        <button type="button" onclick="setIdentif('distancia')" style="flex:1;padding:10px;border-radius:10px;border:1.4px solid var(--line);font-weight:600;background:${s.identif==='distancia'?'var(--accent)':'transparent'};color:${s.identif==='distancia'?'#fff':'inherit'}">🔭 Desde la distancia</button>
+      </div></div>
     <div class="field"><label>Variante / alternativa <span class="hint">Opcional — útil en prefactibilidad</span></label>
       <input type="text" id="f_variante" value="${esc(s.data.variante||'')}" placeholder="Ej: Alt. A"></div>
     <div class="field"><label>Coordenadas</label>
@@ -655,6 +665,7 @@ function photosHTML(s){
   </div>`).join('');
 }
 function setPhotoComment(i,v){const s=curSite();if(!s||!s.fotos[i])return;s.fotos[i].comentario=v;saveDB();}
+function setIdentif(v){const s=curSite();if(!s)return;s.identif=(s.identif===v?'':v);saveDB();render();}
 
 /* ===================== HELPERS DE VALOR ===================== */
 function esc(x){return (x==null?'':String(x)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
@@ -1463,7 +1474,7 @@ function torresCfg(p){
     let rec=null;
     if(s.rec==='mantener')rec={txt:'MANTENER el punto de torre',shd:'EAF6EE',col:'0F7A34'};
     else if(s.rec==='mover'){let mv='';if(s.mover&&(s.mover.dir||s.mover.dist||(s.mover.motivo&&s.mover.motivo.length)))mv=' — '+[s.mover.dir,s.mover.dist].filter(Boolean).join(', ')+((s.mover.motivo&&s.mover.motivo.length)?(' · motivo: '+s.mover.motivo.join(', ')):'');rec={txt:'MOVER el punto de torre'+mv,shd:'FDEEDE',col:'A3540C'};}
-    return {titulo:(s.sitioId||'(sin ID)')+(s.data.variante?(' · '+s.data.variante):''),tituloCorto:s.sitioId||'sitio',metaLine:coord+' · '+(s.data.fecha?fdatetime(s.data.fecha):fdate(s.creado)),rec,domains,fotos:s.fotos};
+    return {titulo:(s.sitioId||'(sin ID)')+(s.data.variante?(' · '+s.data.variante):''),tituloCorto:s.sitioId||'sitio',metaLine:coord+' · '+(s.data.fecha?fdatetime(s.data.fecha):fdate(s.creado))+(s.identif?(' · '+(s.identif==='punto'?'Identificado en el punto':'Visto desde la distancia')):''),rec,domains,fotos:s.fotos};
   });
   return {titulo:p.nombre||'Proyecto',subtitulo:p.epmSub||'Recorrido de campo — Sitios de torre',anexoTipo:p.epmAnexo||'Obras Civiles',codigo:p.epmCodigo||p.contrato||'RGIS-FO-R15-CIV-000',area:p.epmArea||'Área Planeación y Formulación Proyectos T&D Energía',fecha:p.epmFecha||mesAnio(),logoB64:LOGO_B64,metaRows:meta,summary,projFotos:(p.fotos||[]),sites:S};
 }
