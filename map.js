@@ -95,7 +95,11 @@ function _esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;',
 /* ---------- cargar archivos de mapa ---------- */
 function mapPickFile(){ document.getElementById('mapFile').click(); }
 async function mapLoadFile(input){
-  const file=input.files&&input.files[0]; if(!file)return; input.value='';
+  const files=Array.from(input.files||[]); input.value='';
+  for(const file of files){ await mapLoadOne(file); }
+  if(files.length>1) alert(files.length+' capas cargadas.');
+}
+async function mapLoadOne(file){
   try{
     const name=file.name.toLowerCase();
     if(name.endsWith('.geojson')||name.endsWith('.json')){ _addGeoJSON(JSON.parse(await file.text()),file.name); return; }
@@ -117,7 +121,7 @@ async function mapLoadFile(input){
     }
     if(name.endsWith('.pdf')){ await _loadPDF(file); return; }
     alert('Formato no soportado. Usa KMZ, KML, GPX, GeoJSON, ZIP (shapefile) o PDF.');
-  }catch(e){ alert('No se pudo leer el archivo: '+e.message); }
+  }catch(e){ alert('No se pudo leer '+file.name+': '+e.message); }
 }
 function _addGeoJSON(gj,name){
   if(!gj||!gj.features||!gj.features.length){alert('No se encontraron geometrías en "'+name+'".');return;}
