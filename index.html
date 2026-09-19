@@ -189,7 +189,8 @@
   .rpt-sec h5{margin:0 0 4px;font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--epm-d);border-bottom:1px solid var(--epm-l);padding-bottom:2px}
   .rpt-sec .kv{font-size:13px;margin:2px 0}
   .rpt-sec .kv b{color:var(--ink2)}
-  .rpt-photos{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:8px}
+  .rpt-photos{display:flex;flex-direction:column;gap:10px;margin-top:8px}
+  .rpt-photos img{width:100%;height:auto;display:block;border-radius:6px}
   .rpt-photos img{width:100%;border-radius:8px;border:1px solid var(--line)}
   .rpt-foot{margin-top:18px;border-top:1.5px solid var(--epm);padding-top:8px;font-size:10.5px;color:var(--muted);display:flex;justify-content:space-between}
   .toolbar-print{display:flex;gap:9px;margin:16px 22px 0}
@@ -227,6 +228,8 @@
   .mlayers{background:rgba(255,255,255,.96);border-radius:9px;padding:4px 6px;font-size:12px;max-height:30vh;overflow:auto;box-shadow:0 1px 8px rgba(0,0,0,.25)}
   .mlayers .mlh{font-weight:700;margin:2px 4px}
   .mlayers .mlrow{display:flex;align-items:center;gap:6px;padding:3px 4px}
+  .mlayers .mlrow.off{opacity:.5}
+  .mlayers .mlrow.off .nm{text-decoration:line-through}
   .mlayers .dot{width:12px;height:12px;border-radius:3px;flex:none}
   .mlayers .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px}
   .mlayers button{border:none;background:#eee;border-radius:6px;padding:2px 6px}
@@ -298,7 +301,7 @@
     <span class="brandpill"><img id="brandLogo" alt="EPM"></span>
     <div class="brand">Informe de Campo<small>Sitios de torre · líneas de transmisión</small></div>
     <div class="spacer"></div>
-    <span class="verbadge" id="verBadge">v16</span>
+    <span class="verbadge" id="verBadge">v18</span>
     <button class="icon" id="btnProjects">Proyectos</button>
   </header>
 
@@ -329,7 +332,7 @@
   <div class="datos-body">
     <div class="datos-card">
       <div class="dh">Versión de la app</div>
-      <div class="dv">Estás en <b id="datosVer">v16</b>.</div>
+      <div class="dv">Estás en <b id="datosVer">v18</b>.</div>
       <button class="dbtn" onclick="checkUpdates()">🔄 Buscar actualizaciones</button>
       <div class="dnote" id="updStatus"></div>
     </div>
@@ -457,7 +460,7 @@ const OPC = {
 /* ===================== ESTADO / PERSISTENCIA ===================== */
 const KEY='ivc_torres_v1';
 const APP_ID='LT', APP_NOMBRE='Líneas de transmisión (torres)', SCHEMA_VER=2;
-const APP_VER='v16';
+const APP_VER='v18';
 let _editMode=false;
 const ROLES=['Geología - Geotecnia','Estructuras - Obras Civiles','Hidrología - Hidráulica'];
 const FOTO_CATS=['Ubicación','Geología','Geotecnia','Hidráulica','Amenazas','Otros'];
@@ -575,8 +578,19 @@ function formHTML(s){
   h+=siteNavHTML(s);
   // --- Identificación ---
   h+=card('id','Identificación','Sitio, coordenadas y fecha',true,`
-    <div class="field"><label>ID del sitio de torre <span class="hint">Ej: T-045, V1-T012</span></label>
-      <input type="text" id="f_sitioId" value="${esc(s.sitioId)}" placeholder="T-000"></div>
+    <div class="field"><label>Tipo de sitio</label>
+      <div style="display:flex;gap:8px">
+        <button type="button" onclick="setTipoSitio('torre')" style="flex:1;padding:9px;border-radius:10px;border:1.4px solid var(--line);font-weight:600;background:${(s.tipoSitio||'torre')==='torre'?'var(--accent)':'transparent'};color:${(s.tipoSitio||'torre')==='torre'?'#fff':'inherit'}">📍 En torre</button>
+        <button type="button" onclick="setTipoSitio('vano')" style="flex:1;padding:9px;border-radius:10px;border:1.4px solid var(--line);font-weight:600;background:${s.tipoSitio==='vano'?'var(--accent)':'transparent'};color:${s.tipoSitio==='vano'?'#fff':'inherit'}">↔️ Entre torres</button>
+      </div></div>
+    <div class="field"><label>${s.tipoSitio==='vano'?'Vano (entre torres)':'ID del sitio de torre'} <span class="hint">${s.tipoSitio==='vano'?'Ej: T-045 – T-046':'Ej: T-045, V1-T012'}</span></label>
+      <input type="text" id="f_sitioId" value="${esc(s.sitioId)}" placeholder="${s.tipoSitio==='vano'?'T-000 – T-000':'T-000'}"></div>
+    ${s.tipoSitio==='vano'?`<div class="field"><label>Posición en el vano <span class="hint">Opcional</span></label>
+      <div style="display:flex;gap:6px">
+        <button type="button" onclick="setVanoPos('ini')" style="flex:1;padding:8px;border-radius:9px;border:1.3px solid var(--line);font-size:12px;font-weight:600;background:${s.vanoPos==='ini'?'var(--accent)':'transparent'};color:${s.vanoPos==='ini'?'#fff':'inherit'}">Cerca 1ª</button>
+        <button type="button" onclick="setVanoPos('centro')" style="flex:1;padding:8px;border-radius:9px;border:1.3px solid var(--line);font-size:12px;font-weight:600;background:${s.vanoPos==='centro'?'var(--accent)':'transparent'};color:${s.vanoPos==='centro'?'#fff':'inherit'}">Centro</button>
+        <button type="button" onclick="setVanoPos('fin')" style="flex:1;padding:8px;border-radius:9px;border:1.3px solid var(--line);font-size:12px;font-weight:600;background:${s.vanoPos==='fin'?'var(--accent)':'transparent'};color:${s.vanoPos==='fin'?'#fff':'inherit'}">Cerca 2ª</button>
+      </div></div>`:''}
     <div class="field"><label>Identificación del punto</label>
       <div style="display:flex;gap:8px">
         <button type="button" onclick="setIdentif('punto')" style="flex:1;padding:10px;border-radius:10px;border:1.4px solid var(--line);font-weight:600;background:${s.identif==='punto'?'var(--accent)':'transparent'};color:${s.identif==='punto'?'#fff':'inherit'}">📍 En el punto</button>
@@ -611,12 +625,15 @@ function formHTML(s){
     let inner='';
     dom.campos.forEach(c=>{ if(c.cond&&!c.cond(s))return; inner+=fieldHTML(dom.id,c,s); });
     if(dom.id==='civ'){
-      inner+=`<div class="field"><label>Cimentación — tipo recomendado</label>${multiPills('cim.tipo',OPC.cimTipo,s.cim.tipo)}</div>`;
-      inner+=`<div class="field"><label>Cimentación — consideraciones</label>${multiPills('cim.cons',OPC.cimCons,s.cim.cons)}</div>`;
       inner+=`<div class="field"><label>Obras de estabilización / protección</label>${multiPills('obras',OPC.obras,s.obras)}</div>`;
     }
-    const anyFilled = dom.campos.some(c=>hasVal(s.data[dom.id+'.'+c.id])) || (dom.id==='civ' && (s.cim.tipo.length||s.cim.cons.length||s.obras.length));
+    const anyFilled = dom.campos.some(c=>hasVal(s.data[dom.id+'.'+c.id])) || (dom.id==='civ' && s.obras.length);
     h+=card(dom.id,dom.titulo,dom.sub,false,inner,anyFilled);
+    if(dom.id==='civ'){
+      const cimInner=`<div class="field"><label>Cimentación — tipo recomendado</label>${multiPills('cim.tipo',OPC.cimTipo,s.cim.tipo)}</div>`
+        +`<div class="field"><label>Cimentación — consideraciones</label>${multiPills('cim.cons',OPC.cimCons,s.cim.cons)}</div>`;
+      h+=card('cim','Cimentación',(s.tipoSitio==='vano'?'Solo aplica en punto de torre — opcional aquí':'Tipo y consideraciones de la pata'),false,cimInner,(s.cim.tipo.length||s.cim.cons.length));
+    }
   });
 
   // --- Vanos (antes de recomendación) ---
@@ -744,6 +761,8 @@ function photosHTML(s){
 }
 function setPhotoComment(i,v){const s=curSite();if(!s||!s.fotos[i])return;s.fotos[i].comentario=v;saveDB();}
 function setIdentif(v){const s=curSite();if(!s)return;s.identif=(s.identif===v?'':v);saveDB();render();}
+function setTipoSitio(v){const s=curSite();if(!s)return;s.tipoSitio=v;saveDB();render();}
+function setVanoPos(v){const s=curSite();if(!s)return;s.vanoPos=(s.vanoPos===v?'':v);saveDB();render();}
 async function sharePhoto(i){
   const s=curSite();if(!s||!s.fotos[i])return;
   try{
@@ -1626,9 +1645,9 @@ function torresCfg(p){
     if(s.obs&&s.obs.trim())domains.push({h:'Observaciones',kv:[['Notas',s.obs.trim()]]});
     const coord=s.data.lat?(s.data.lat+', '+s.data.lon+(s.data.elev?(' · '+s.data.elev+' m'):'')):'coordenadas no registradas';
     let rec=null;
-    if(s.rec==='mantener')rec={txt:'MANTENER el punto de torre',shd:'EAF6EE',col:'0F7A34'};
-    else if(s.rec==='mover'){let mv='';if(s.mover&&(s.mover.dir||s.mover.dist||(s.mover.motivo&&s.mover.motivo.length)))mv=' — '+[s.mover.dir,s.mover.dist].filter(Boolean).join(', ')+((s.mover.motivo&&s.mover.motivo.length)?(' · motivo: '+s.mover.motivo.join(', ')):'');rec={txt:'MOVER el punto de torre'+mv,shd:'FDEEDE',col:'A3540C'};}
-    return {titulo:(s.sitioId||'(sin ID)')+(s.data.variante?(' · '+s.data.variante):''),tituloCorto:s.sitioId||'sitio',metaLine:coord+' · '+(s.data.fecha?fdatetime(s.data.fecha):fdate(s.creado))+(s.identif?(' · '+(s.identif==='punto'?'Identificado en el punto':'Visto desde la distancia')):''),rec,domains,fotos:s.fotos};
+    if(s.rec==='mantener')rec={txt:'MANTENER '+(s.tipoSitio==='vano'?'el punto':'el punto de torre'),shd:'EAF6EE',col:'0F7A34'};
+    else if(s.rec==='mover'){let mv='';if(s.mover&&(s.mover.dir||s.mover.dist||(s.mover.motivo&&s.mover.motivo.length)))mv=' — '+[s.mover.dir,s.mover.dist].filter(Boolean).join(', ')+((s.mover.motivo&&s.mover.motivo.length)?(' · motivo: '+s.mover.motivo.join(', ')):'');rec={txt:'MOVER '+(s.tipoSitio==='vano'?'el punto':'el punto de torre')+mv,shd:'FDEEDE',col:'A3540C'};}
+    return {titulo:(s.sitioId||'(sin ID)')+(s.data.variante?(' · '+s.data.variante):''),tituloCorto:s.sitioId||'sitio',metaLine:coord+' · '+(s.data.fecha?fdatetime(s.data.fecha):fdate(s.creado))+(s.identif?(' · '+(s.identif==='punto'?'Identificado en el punto':'Visto desde la distancia')):'')+(s.tipoSitio==='vano'&&s.vanoPos?(' · '+({ini:'cerca 1ª torre',centro:'centro del vano',fin:'cerca 2ª torre'}[s.vanoPos])):''),rec,domains,fotos:s.fotos};
   });
   return {titulo:p.nombre||'Proyecto',subtitulo:p.epmSub||'Recorrido de campo — Sitios de torre',anexoTipo:p.epmAnexo||'Obras Civiles',codigo:p.epmCodigo||p.contrato||'RGIS-FO-R15-CIV-000',area:p.epmArea||'Área Planeación y Formulación Proyectos T&D Energía',fecha:p.epmFecha||mesAnio(),logoB64:LOGO_B64,metaRows:meta,summary,projFotos:(p.fotos||[]),sites:S};
 }
@@ -1712,7 +1731,7 @@ function reportHTML(p,sites){
     </div>${reportInner(p,sites)}`;
 }
 function siteReport(s){
-  const recTxt=s.rec==='mantener'?'MANTENER el punto de torre':s.rec==='mover'?'MOVER el punto de torre':'Sin recomendación';
+  const _pt=(s.tipoSitio==='vano'?'el punto':'el punto de torre');const recTxt=s.rec==='mantener'?('MANTENER '+_pt):s.rec==='mover'?('MOVER '+_pt):'Sin recomendación';
   const recBg=s.rec==='mantener'?'background:#eaf6ee;color:#0f7a34':s.rec==='mover'?'background:#fdeede;color:#a3540c':'background:#eef1f4;color:#556';
   let mv='';
   if(s.rec==='mover'){mv=` — ${[s.mover.dir,s.mover.dist].filter(Boolean).join(', ')}${s.mover.motivo&&s.mover.motivo.length?(' · motivo: '+s.mover.motivo.join(', ')):''}`;}
@@ -1731,7 +1750,7 @@ function siteReport(s){
   const vanos=(vano(s.vanos.arriba,'Aguas arriba')+vano(s.vanos.abajo,'Aguas abajo'));
   const vanosSec=vanos?`<div class="rpt-sec"><h5>Vanos adyacentes</h5>${vanos}</div>`:'';
   const obs=(s.obs&&s.obs.trim())?`<div class="rpt-sec"><h5>Observaciones</h5><div class="kv">${esc(s.obs)}</div></div>`:'';
-  const fotos=s.fotos.length?`<div class="rpt-sec"><h5>Registro fotográfico</h5><div class="rpt-photos">${s.fotos.map(f=>`<figure style="margin:0"><img src="${pData(f)}">${f.comentario?`<figcaption style="font-size:11.5px;color:#444;margin-top:3px">${esc(f.comentario)}</figcaption>`:''}</figure>`).join('')}</div></div>`:'';
+  const fotos=s.fotos.length?`<div class="rpt-sec"><h5>Registro fotográfico</h5><div class="rpt-photos">${s.fotos.map(f=>`<figure style="margin:0"><img src="${pData(f)}" style="width:100%;height:auto;display:block;border-radius:6px">${f.comentario?`<figcaption style="font-size:11.5px;color:#444;margin-top:3px">${esc(f.comentario)}</figcaption>`:''}</figure>`).join('')}</div></div>`:'';
   const coord=s.data.lat?`${s.data.lat}, ${s.data.lon}${s.data.elev?' · '+s.data.elev+' m':''}`:'coordenadas no registradas';
   return `<div class="rpt-site">
     <h2>${esc(s.sitioId||'(sin ID)')} ${s.data.variante?`· ${esc(s.data.variante)}`:''}</h2>
