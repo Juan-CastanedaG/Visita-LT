@@ -304,6 +304,11 @@
     .dsrow.active{background:var(--accent);color:#fff}
     .dsnew{width:100%;margin-top:8px;padding:9px;border:1px dashed var(--line);background:transparent;border-radius:9px;font-weight:700;color:var(--epm-d);cursor:pointer}
   }
+  .ladoswrap{display:flex;gap:12px;align-items:flex-start}
+  .lado{flex:1;min-width:0}
+  .ladoh{font-weight:800;color:var(--epm-d);text-align:center;padding:8px;background:#eef4ee;border-radius:10px;margin-bottom:8px;position:sticky;top:0;z-index:2}
+  .rpt-side{border-top:2px solid var(--epm-l);margin-top:10px;padding-top:6px}
+  .rpt-sideh{margin:0 0 6px;color:var(--epm-d);font-size:14px}
 </style>
 </head>
 <body>
@@ -314,7 +319,7 @@
     <span class="brandpill"><img id="brandLogo" alt="EPM"></span>
     <div class="brand">Informe de Campo<small>Sitios de torre · líneas de transmisión</small></div>
     <div class="spacer"></div>
-    <span class="verbadge" id="verBadge">v20</span>
+    <span class="verbadge" id="verBadge">v21</span>
     <button class="icon" id="btnProjects">Proyectos</button>
   </header>
 
@@ -348,7 +353,7 @@
   <div class="datos-body">
     <div class="datos-card">
       <div class="dh">Versión de la app</div>
-      <div class="dv">Estás en <b id="datosVer">v20</b>.</div>
+      <div class="dv">Estás en <b id="datosVer">v21</b>.</div>
       <button class="dbtn" onclick="checkUpdates()">🔄 Buscar actualizaciones</button>
       <div class="dnote" id="updStatus"></div>
     </div>
@@ -476,7 +481,7 @@ const OPC = {
 /* ===================== ESTADO / PERSISTENCIA ===================== */
 const KEY='ivc_torres_v1';
 const APP_ID='LT', APP_NOMBRE='Líneas de transmisión (torres)', SCHEMA_VER=2;
-const APP_VER='v20';
+const APP_VER='v21';
 let _editMode=false;
 const ROLES=['Geología - Geotecnia','Estructuras - Obras Civiles','Hidrología - Hidráulica'];
 const FOTO_CATS=['Ubicación','Geología','Geotecnia','Hidráulica','Amenazas','Otros'];
@@ -639,46 +644,38 @@ function formHTML(s){
     </div>
   `,isFilled(s.sitioId));
 
-  // --- Dominios ---
-  SCHEMA.forEach(dom=>{
-    let inner='';
-    dom.campos.forEach(c=>{ if(c.cond&&!c.cond(s))return; inner+=fieldHTML(dom.id,c,s); });
-    if(dom.id==='civ'){
-      inner+=`<div class="field"><label>Obras de estabilización / protección</label>${multiPills('obras',OPC.obras,s.obras)}</div>`;
-    }
-    const anyFilled = dom.campos.some(c=>hasVal(s.data[dom.id+'.'+c.id])) || (dom.id==='civ' && s.obras.length);
-    h+=card(dom.id,dom.titulo,dom.sub,false,inner,anyFilled);
-    if(dom.id==='civ'){
-      const cimInner=`<div class="field"><label>Cimentación — tipo recomendado</label>${multiPills('cim.tipo',OPC.cimTipo,s.cim.tipo)}</div>`
-        +`<div class="field"><label>Cimentación — consideraciones</label>${multiPills('cim.cons',OPC.cimCons,s.cim.cons)}</div>`;
-      h+=card('cim','Cimentación',(s.tipoSitio==='vano'?'Solo aplica en punto de torre — opcional aquí':'Tipo y consideraciones de la pata'),false,cimInner,(s.cim.tipo.length||s.cim.cons.length));
-    }
-  });
-
-  // --- Vanos (antes de recomendación) ---
-  h+=card('vanos','Vanos adyacentes','Evaluación rápida aguas arriba / abajo',false,`
-    <div class="spanwrap">
-      ${spanCol('arriba','Aguas arriba',s.vanos.arriba)}
-      ${spanCol('abajo','Aguas abajo',s.vanos.abajo)}
-    </div>
-  `,(Object.keys(s.vanos.arriba).length||Object.keys(s.vanos.abajo).length));
-
-  // --- Fotos (antes de recomendación) ---
-  h+=card('fotos','Registro fotográfico',(s.fotos.length?s.fotos.length+' foto(s)':'Cámara o galería, con dibujo'),false,`
+  // --- Fotos y Observaciones (compartidas) ---
+  const fotosCard=card('fotos','Registro fotográfico',(s.fotos.length?s.fotos.length+' foto(s)':'Cámara o galería, con dibujo'),false,`
     <div class="photolist" id="photogrid">${photosHTML(s)}</div>
     <div class="addphoto">
       <button class="btn ghost sm" id="btnCam">Cámara</button>
       <button class="btn ghost sm" id="btnGal">Galería</button>
     </div>
   `,s.fotos.length);
-
-  // --- Recomendación ---
-  h+=card('rec','Recomendación','Mantener o mover el punto',true,recHTML(s),!!s.rec);
-
-  // --- Observaciones ---
-  h+=card('obs','Observaciones','Notas libres del sitio',false,`
+  const obsCard=card('obs','Observaciones','Notas libres del sitio',false,`
     <div class="field"><textarea id="f_obs" placeholder="Detalles, medidas, contexto…">${esc(s.obs||'')}</textarea></div>
   `,!!(s.obs&&s.obs.trim()));
+
+  if(s.tipoSitio==='vano'){
+    const ids=(s.sitioId||'').split(/[–\-—]/).map(x=>x.trim());
+    const t1=ids[0]||'1ª torre', t2=(ids[1]||'2ª torre');
+    h+=`<div class="ladoswrap">
+      <div class="lado"><div class="ladoh">Hacia ${esc(t1)}</div>${domainCards(s,0)}${card('L0-rec','Recomendación','Para este lado',true,recHTML(s,0),!!_lado(s,0).rec)}</div>
+      <div class="lado"><div class="ladoh">Hacia ${esc(t2)}</div>${domainCards(s,1)}${card('L1-rec','Recomendación','Para este lado',true,recHTML(s,1),!!_lado(s,1).rec)}</div>
+    </div>`;
+    h+=fotosCard; h+=obsCard;
+  } else {
+    h+=domainCards(s,null);
+    h+=card('vanos','Vanos adyacentes','Evaluación rápida aguas arriba / abajo',false,`
+    <div class="spanwrap">
+      ${spanCol('arriba','Aguas arriba',s.vanos.arriba)}
+      ${spanCol('abajo','Aguas abajo',s.vanos.abajo)}
+    </div>
+  `,(Object.keys(s.vanos.arriba).length||Object.keys(s.vanos.abajo).length));
+    h+=fotosCard;
+    h+=card('rec','Recomendación','Mantener o mover el punto',true,recHTML(s),!!s.rec);
+    h+=obsCard;
+  }
 
   return h;
 }
@@ -696,8 +693,35 @@ function card(id,titulo,sub,open,inner,filled){
   </section>`;
 }
 
-function fieldHTML(domId,c,s){
-  const key=domId+'.'+c.id; const val=s.data[key];
+function _emptySide(){return {data:{},cim:{tipo:[],cons:[]},obras:[],rec:null,mover:{}};}
+function _sideFromPrimary(s){return {data:Object.fromEntries(Object.entries(s.data||{}).filter(function(e){return e[0].indexOf('.')>=0;})),cim:{tipo:(s.cim&&s.cim.tipo?s.cim.tipo.slice():[]),cons:(s.cim&&s.cim.cons?s.cim.cons.slice():[])},obras:(s.obras?s.obras.slice():[]),rec:s.rec||null,mover:Object.assign({},s.mover||{})};}
+function _lado(s,i){if(!s.lados)s.lados=[_sideFromPrimary(s),_emptySide()];if(!s.lados[i])s.lados[i]=_emptySide();return s.lados[i];}
+function domainCards(s,L){
+  const store=(L===0||L===1)?_lado(s,L):s;
+  const pfx=(L===0||L===1)?('L'+L+'.'):'';
+  const cid=function(id){return (L===0||L===1)?('L'+L+'-'+id):id;};
+  let h='';
+  SCHEMA.forEach(dom=>{
+    let inner='';
+    dom.campos.forEach(c=>{ if(c.cond&&!c.cond(store))return; inner+=fieldHTML(dom.id,c,s,L); });
+    if(dom.id==='civ'){
+      inner+=`<div class="field"><label>Obras de estabilización / protección</label>${multiPills(pfx+'obras',OPC.obras,store.obras)}</div>`;
+    }
+    const anyFilled = dom.campos.some(c=>hasVal(store.data[dom.id+'.'+c.id])) || (dom.id==='civ' && store.obras.length);
+    h+=card(cid(dom.id),dom.titulo,dom.sub,false,inner,anyFilled);
+    if(dom.id==='civ'){
+      const cimInner=`<div class="field"><label>Cimentación — tipo recomendado</label>${multiPills(pfx+'cim.tipo',OPC.cimTipo,store.cim.tipo)}</div>`
+        +`<div class="field"><label>Cimentación — consideraciones</label>${multiPills(pfx+'cim.cons',OPC.cimCons,store.cim.cons)}</div>`;
+      h+=card(cid('cim'),'Cimentación',(s.tipoSitio==='vano'?'Solo aplica en punto de torre — opcional aquí':'Tipo y consideraciones de la pata'),false,cimInner,(store.cim.tipo.length||store.cim.cons.length));
+    }
+  });
+  return h;
+}
+function fieldHTML(domId,c,s,L){
+  const base=domId+'.'+c.id;
+  const store=(L===0||L===1)?_lado(s,L):s;
+  const val=store.data?store.data[base]:undefined;
+  const key=(L===0||L===1)?('L'+L+'.'+base):base;
   let ctrl='';
   if(c.tipo==='single') ctrl=singlePills(key,c.op,val,c.flag);
   else if(c.tipo==='multi') ctrl=multiPills(key,c.op,val||[]);
@@ -741,9 +765,12 @@ function spanCol(k,titulo,v){
   </div>`;
 }
 
-function recHTML(s){
-  const rec=s.rec;
-  const flags=activeFlags(s);
+function recHTML(s,L){
+  const store=(L===0||L===1)?_lado(s,L):s;
+  const rec=store.rec;
+  const flags=activeFlags(store);
+  const pfx=(L===0||L===1)?('L'+L+'.'):'';
+  const Larg=(L===0||L===1)?(','+L):'';
   let warn='';
   if(flags.excluyente.length){
     warn=`<div class="warn"><b>⚑</b><div>Condiciones <b>excluyentes</b> en el punto: ${flags.excluyente.join(', ')}. Suelen justificar reubicación — confirma tu recomendación.</div></div>`;
@@ -753,16 +780,16 @@ function recHTML(s){
   let moveBlock='';
   if(rec==='mover'){
     moveBlock=`<div class="recbox">
-      <div class="field"><label>Dirección</label>${singlePills('mv.dir',OPC.moverDir,s.mover.dir)}</div>
-      <div class="field"><label>Distancia aproximada</label>${singlePills('mv.dist',OPC.moverDist,s.mover.dist)}</div>
-      <div class="field"><label>Motivo</label>${multiPills('mv.motivo',OPC.moverMotivo,s.mover.motivo||[])}</div>
+      <div class="field"><label>Dirección</label>${singlePills(pfx+'mv.dir',OPC.moverDir,store.mover.dir)}</div>
+      <div class="field"><label>Distancia aproximada</label>${singlePills(pfx+'mv.dist',OPC.moverDist,store.mover.dist)}</div>
+      <div class="field"><label>Motivo</label>${multiPills(pfx+'mv.motivo',OPC.moverMotivo,store.mover.motivo||[])}</div>
       <div class="warn" style="background:#fff7e6;border-color:#f0dca0;color:#8a6a0a"><b>↔</b><div>Mover esta torre altera los vanos vecinos. Revisa las torres adyacentes.</div></div>
     </div>`;
   }
   return `${warn}
     <div class="recchoice" style="margin-top:10px">
-      <button class="keep ${rec==='mantener'?'on':''}" onclick="setRec('mantener')">Mantener el punto</button>
-      <button class="move ${rec==='mover'?'on':''}" onclick="setRec('mover')">Mover el punto</button>
+      <button class="keep ${rec==='mantener'?'on':''}" onclick="setRec('mantener'${Larg})">Mantener el punto</button>
+      <button class="move ${rec==='mover'?'on':''}" onclick="setRec('mover'${Larg})">Mover el punto</button>
     </div>${moveBlock}`;
 }
 
@@ -812,28 +839,29 @@ function hasVal(v){return v!=null && v!=='' && !(Array.isArray(v)&&v.length===0)
 function isFilled(v){return !!(v&&String(v).trim());}
 function nowLocal(){const d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,16);}
 
-function setVal(key,v){const s=curSite();if(!s)return;s.data[key]=v;saveDB();}
+function setVal(key,v){const s=curSite();if(!s)return;let SS=s;const m=key.match(/^L([01])\.(.*)$/);if(m){SS=_lado(s,+m[1]);key=m[2];}SS.data=SS.data||{};SS.data[key]=v;saveDB();}
 function pickSingle(key,v){
   const s=curSite();if(!s)return;
-  // vano.* and mv.* route to their own stores
-  if(key.startsWith('vano.')){const[,k,f]=key.split('.');s.vanos[k][f]=(s.vanos[k][f]===v?null:v);}
-  else if(key.startsWith('mv.')){const f=key.split('.')[1];s.mover[f]=(s.mover[f]===v?null:v);}
-  else {s.data[key]=(s.data[key]===v?null:v);}
-  if(key==='hid.cuerpo'&&(s.data[key]===null||s.data[key]==='Ninguno'))delete s.data['hid.distcuerpo'];
+  let SS=s; const m=key.match(/^L([01])\.(.*)$/); if(m){SS=_lado(s,+m[1]);key=m[2];}
+  if(key.startsWith('vano.')){const parts=key.split('.');s.vanos[parts[1]][parts[2]]=(s.vanos[parts[1]][parts[2]]===v?null:v);}
+  else if(key.startsWith('mv.')){const f=key.split('.')[1];SS.mover=SS.mover||{};SS.mover[f]=(SS.mover[f]===v?null:v);}
+  else {SS.data=SS.data||{};SS.data[key]=(SS.data[key]===v?null:v);}
+  if(key==='hid.cuerpo'&&SS.data&&(SS.data[key]===null||SS.data[key]==='Ninguno'))delete SS.data['hid.distcuerpo'];
   saveDB();rerender();
 }
 function toggleMulti(key,v){
   const s=curSite();if(!s)return;
+  let SS=s; const m=key.match(/^L([01])\.(.*)$/); if(m){SS=_lado(s,+m[1]);key=m[2];}
   let arr;
-  if(key.startsWith('vano.')){const[,k,f]=key.split('.');arr=s.vanos[k][f]=s.vanos[k][f]||[];}
-  else if(key==='cim.tipo')arr=s.cim.tipo; else if(key==='cim.cons')arr=s.cim.cons;
-  else if(key==='obras')arr=s.obras;
-  else if(key==='mv.motivo')arr=s.mover.motivo=s.mover.motivo||[];
-  else arr=s.data[key]=s.data[key]||[];
+  if(key.startsWith('vano.')){const parts=key.split('.');arr=s.vanos[parts[1]][parts[2]]=s.vanos[parts[1]][parts[2]]||[];}
+  else if(key==='cim.tipo')arr=SS.cim.tipo; else if(key==='cim.cons')arr=SS.cim.cons;
+  else if(key==='obras')arr=SS.obras;
+  else if(key==='mv.motivo'){SS.mover=SS.mover||{};arr=SS.mover.motivo=SS.mover.motivo||[];}
+  else {SS.data=SS.data||{};arr=SS.data[key]=SS.data[key]||[];}
   const i=arr.indexOf(v); if(i>=0)arr.splice(i,1); else arr.push(v);
   saveDB();rerender();
 }
-function setRec(v){const s=curSite();if(!s)return;s.rec=(s.rec===v?null:v);if(s.rec!=='mover')s.mover={};saveDB();rerender();}
+function setRec(v,L){const s=curSite();if(!s)return;const SS=(L===0||L===1)?_lado(s,L):s;SS.rec=(SS.rec===v?null:v);if(SS.rec!=='mover')SS.mover={};saveDB();rerender();}
 
 function activeFlags(s){
   const out={menor:[],mayor:[],excluyente:[]};
@@ -1657,16 +1685,29 @@ function torresCfg(p){
     return [{t:String(i+1)},{t:s.sitioId||'(sin ID)',b:true},rc,th(s.data['amenaza.inund']),th(s.data['amenaza.mm']),th(s.data['amenaza.torrencial'])];});
   const summary={caption:'Resumen de recomendaciones por sitio',note:sites.length+' sitios · Mantener: '+keep+' · Mover: '+move+(none?(' · Sin recomendación: '+none):''),headers:['#','Sitio','Recomendación','Inund.','M.masa','Torr.'],grid:[600,2400,3000,1100,1150,1150],rows};
   const S=sites.map(s=>{
-    const domains=[];
-    SCHEMA.forEach(dom=>{const kv=[];dom.campos.forEach(c=>{if(c.cond&&!c.cond(s))return;const v=s.data[dom.id+'.'+c.id];if(hasVal(v))kv.push([c.label,Array.isArray(v)?v.join(', '):String(v)]);});if(kv.length)domains.push({h:dom.titulo,kv});});
-    const cimkv=[];if(s.cim.tipo.length)cimkv.push(['Tipo',s.cim.tipo.join(', ')]);if(s.cim.cons.length)cimkv.push(['Consideraciones',s.cim.cons.join(', ')]);if(cimkv.length)domains.push({h:'Cimentación',kv:cimkv});
-    if(s.obras.length)domains.push({h:'Obras de estabilización / protección',kv:[['Obras',s.obras.join(', ')]]});
-    const vk=[];const vano=(v,t)=>{const parts=[];if(v.terreno)parts.push('terreno '+v.terreno);if(v.cruces&&v.cruces.length)parts.push('cruza: '+v.cruces.join(', '));if(parts.length)vk.push([t,parts.join(' · ')]);};vano(s.vanos.arriba,'Aguas arriba');vano(s.vanos.abajo,'Aguas abajo');if(vk.length)domains.push({h:'Vanos adyacentes',kv:vk});
-    if(s.obs&&s.obs.trim())domains.push({h:'Observaciones',kv:[['Notas',s.obs.trim()]]});
+    const domains=[]; let rec=null;
+    if(s.tipoSitio==='vano'){
+      const ids=(s.sitioId||'').split(/[–\-—]/).map(x=>x.trim());
+      const T=[ids[0]||'1ª torre', ids[1]||'2ª torre'];
+      [0,1].forEach(i=>{ const st=_lado(s,i);
+        const rt=st.rec==='mantener'?'MANTENER el punto':st.rec==='mover'?'MOVER el punto':'Sin recomendación';
+        domains.push({h:'▶ Hacia '+T[i],kv:[['Recomendación',rt]]});
+        SCHEMA.forEach(dom=>{const kv=[];dom.campos.forEach(c=>{if(c.cond&&!c.cond(st))return;const v=st.data[dom.id+'.'+c.id];if(hasVal(v))kv.push([c.label,Array.isArray(v)?v.join(', '):String(v)]);});if(kv.length)domains.push({h:'Hacia '+T[i]+' · '+dom.titulo,kv});});
+        if(st.cim.tipo.length||st.cim.cons.length){const ck=[];if(st.cim.tipo.length)ck.push(['Tipo',st.cim.tipo.join(', ')]);if(st.cim.cons.length)ck.push(['Consideraciones',st.cim.cons.join(', ')]);domains.push({h:'Hacia '+T[i]+' · Cimentación',kv:ck});}
+        if(st.obras.length)domains.push({h:'Hacia '+T[i]+' · Obras',kv:[['Obras',st.obras.join(', ')]]});
+      });
+      if(s.obs&&s.obs.trim())domains.push({h:'Observaciones',kv:[['Notas',s.obs.trim()]]});
+      rec={txt:'Punto intermedio (entre torres) — recomendación por lado',shd:'EEF1F4',col:'44515E'};
+    } else {
+      SCHEMA.forEach(dom=>{const kv=[];dom.campos.forEach(c=>{if(c.cond&&!c.cond(s))return;const v=s.data[dom.id+'.'+c.id];if(hasVal(v))kv.push([c.label,Array.isArray(v)?v.join(', '):String(v)]);});if(kv.length)domains.push({h:dom.titulo,kv});});
+      const cimkv=[];if(s.cim.tipo.length)cimkv.push(['Tipo',s.cim.tipo.join(', ')]);if(s.cim.cons.length)cimkv.push(['Consideraciones',s.cim.cons.join(', ')]);if(cimkv.length)domains.push({h:'Cimentación',kv:cimkv});
+      if(s.obras.length)domains.push({h:'Obras de estabilización / protección',kv:[['Obras',s.obras.join(', ')]]});
+      const vk=[];const vano=(v,t)=>{const parts=[];if(v.terreno)parts.push('terreno '+v.terreno);if(v.cruces&&v.cruces.length)parts.push('cruza: '+v.cruces.join(', '));if(parts.length)vk.push([t,parts.join(' · ')]);};vano(s.vanos.arriba,'Aguas arriba');vano(s.vanos.abajo,'Aguas abajo');if(vk.length)domains.push({h:'Vanos adyacentes',kv:vk});
+      if(s.obs&&s.obs.trim())domains.push({h:'Observaciones',kv:[['Notas',s.obs.trim()]]});
+      if(s.rec==='mantener')rec={txt:'MANTENER el punto de torre',shd:'EAF6EE',col:'0F7A34'};
+      else if(s.rec==='mover'){let mv='';if(s.mover&&(s.mover.dir||s.mover.dist||(s.mover.motivo&&s.mover.motivo.length)))mv=' — '+[s.mover.dir,s.mover.dist].filter(Boolean).join(', ')+((s.mover.motivo&&s.mover.motivo.length)?(' · motivo: '+s.mover.motivo.join(', ')):'');rec={txt:'MOVER el punto de torre'+mv,shd:'FDEEDE',col:'A3540C'};}
+    }
     const coord=s.data.lat?(s.data.lat+', '+s.data.lon+(s.data.elev?(' · '+s.data.elev+' m'):'')):'coordenadas no registradas';
-    let rec=null;
-    if(s.rec==='mantener')rec={txt:'MANTENER '+(s.tipoSitio==='vano'?'el punto':'el punto de torre'),shd:'EAF6EE',col:'0F7A34'};
-    else if(s.rec==='mover'){let mv='';if(s.mover&&(s.mover.dir||s.mover.dist||(s.mover.motivo&&s.mover.motivo.length)))mv=' — '+[s.mover.dir,s.mover.dist].filter(Boolean).join(', ')+((s.mover.motivo&&s.mover.motivo.length)?(' · motivo: '+s.mover.motivo.join(', ')):'');rec={txt:'MOVER '+(s.tipoSitio==='vano'?'el punto':'el punto de torre')+mv,shd:'FDEEDE',col:'A3540C'};}
     return {titulo:(s.sitioId||'(sin ID)')+(s.data.variante?(' · '+s.data.variante):''),tituloCorto:s.sitioId||'sitio',metaLine:coord+' · '+(s.data.fecha?fdatetime(s.data.fecha):fdate(s.creado))+(s.identif?(' · '+(s.identif==='punto'?'Identificado en el punto':'Visto desde la distancia')):'')+(s.tipoSitio==='vano'&&s.vanoPos?(' · '+({ini:'cerca 1ª torre',centro:'centro del vano',fin:'cerca 2ª torre'}[s.vanoPos])):''),rec,domains,fotos:s.fotos};
   });
   return {titulo:p.nombre||'Proyecto',subtitulo:p.epmSub||'Recorrido de campo — Sitios de torre',anexoTipo:p.epmAnexo||'Obras Civiles',codigo:p.epmCodigo||p.contrato||'RGIS-FO-R15-CIV-000',area:p.epmArea||'Área Planeación y Formulación Proyectos T&D Energía',fecha:p.epmFecha||mesAnio(),logoB64:LOGO_B64,metaRows:meta,summary,projFotos:(p.fotos||[]),sites:S};
@@ -1750,6 +1791,20 @@ function reportHTML(p,sites){
       <button class="btn ghost" onclick="closeReport()">Volver</button>
     </div>${reportInner(p,sites)}`;
 }
+function _repSections(store){
+  let doms='';
+  SCHEMA.forEach(dom=>{ let kvs=''; dom.campos.forEach(c=>{if(c.cond&&!c.cond(store))return;const v=store.data[dom.id+'.'+c.id];if(hasVal(v))kvs+=`<div class="kv"><b>${c.label}:</b> ${Array.isArray(v)?v.join(', '):esc(v)}</div>`;}); if(kvs)doms+=`<div class="rpt-sec"><h5>${dom.titulo}</h5>${kvs}</div>`; });
+  const cim=(store.cim.tipo.length||store.cim.cons.length)?`<div class="rpt-sec"><h5>Cimentación</h5>${store.cim.tipo.length?`<div class="kv"><b>Tipo:</b> ${store.cim.tipo.join(', ')}</div>`:''}${store.cim.cons.length?`<div class="kv"><b>Consideraciones:</b> ${store.cim.cons.join(', ')}</div>`:''}</div>`:'';
+  const obras=store.obras.length?`<div class="rpt-sec"><h5>Obras de estabilización / protección</h5><div class="kv">${store.obras.join(', ')}</div></div>`:'';
+  return doms+cim+obras;
+}
+function _repRec(store,s){
+  const _pt=(s.tipoSitio==='vano'?'el punto':'el punto de torre');
+  const recTxt=store.rec==='mantener'?('MANTENER '+_pt):store.rec==='mover'?('MOVER '+_pt):'Sin recomendación';
+  const recBg=store.rec==='mantener'?'background:#eaf6ee;color:#0f7a34':store.rec==='mover'?'background:#fdeede;color:#a3540c':'background:#eef1f4;color:#556';
+  let mv=''; if(store.rec==='mover'){mv=` — ${[store.mover.dir,store.mover.dist].filter(Boolean).join(', ')}${store.mover.motivo&&store.mover.motivo.length?(' · motivo: '+store.mover.motivo.join(', ')):''}`;}
+  return `<div class="rpt-rec" style="${recBg}">${recTxt}${mv}</div>`;
+}
 function siteReport(s,screen){
   const _pt=(s.tipoSitio==='vano'?'el punto':'el punto de torre');const recTxt=s.rec==='mantener'?('MANTENER '+_pt):s.rec==='mover'?('MOVER '+_pt):'Sin recomendación';
   const recBg=s.rec==='mantener'?'background:#eaf6ee;color:#0f7a34':s.rec==='mover'?'background:#fdeede;color:#a3540c':'background:#eef1f4;color:#556';
@@ -1772,9 +1827,15 @@ function siteReport(s,screen){
   const obs=(s.obs&&s.obs.trim())?`<div class="rpt-sec"><h5>Observaciones</h5><div class="kv">${esc(s.obs)}</div></div>`:'';
   const fotos=s.fotos.length?`<div class="rpt-sec"><h5>Registro fotográfico</h5><div class="rpt-photos">${s.fotos.map(f=>`<figure style="margin:0"><img class="phimg" data-pid="${screen?(f.id||''):''}" src="${screen?(f.data||''):pData(f)}" style="width:100%;height:auto;display:block;border-radius:6px">${f.comentario?`<figcaption style="font-size:11.5px;color:#444;margin-top:3px">${esc(f.comentario)}</figcaption>`:''}</figure>`).join('')}</div></div>`:'';
   const coord=s.data.lat?`${s.data.lat}, ${s.data.lon}${s.data.elev?' · '+s.data.elev+' m':''}`:'coordenadas no registradas';
-  return `<div class="rpt-site">
-    <h2>${esc(s.sitioId||'(sin ID)')} ${s.data.variante?`· ${esc(s.data.variante)}`:''}</h2>
-    <div class="rpt-meta">${coord} · ${s.data.fecha?fdatetime(s.data.fecha):fdate(s.creado)}</div>
+  const _headMeta=`<h2>${esc(s.sitioId||'(sin ID)')} ${s.data.variante?`· ${esc(s.data.variante)}`:''}</h2>
+    <div class="rpt-meta">${coord} · ${s.data.fecha?fdatetime(s.data.fecha):fdate(s.creado)}${s.identif?(' · '+(s.identif==='punto'?'Identificado en el punto':'Visto desde la distancia')):''}</div>`;
+  if(s.tipoSitio==='vano'){
+    const ids=(s.sitioId||'').split(/[–\-—]/).map(x=>x.trim());
+    const _t1=ids[0]||'1ª torre', _t2=(ids[1]||'2ª torre');
+    const _side=(st,t)=>`<div class="rpt-side"><h4 class="rpt-sideh">Hacia ${esc(t)}</h4>${_repRec(st,s)}${_repSections(st)}</div>`;
+    return `<div class="rpt-site">${_headMeta}${_side(_lado(s,0),_t1)}${_side(_lado(s,1),_t2)}${obs}${fotos}</div>`;
+  }
+  return `<div class="rpt-site">${_headMeta}
     <div class="rpt-rec" style="${recBg}">${recTxt}${mv}</div>
     ${doms}${cim}${obras}${vanosSec}${obs}${fotos}
   </div>`;
