@@ -314,7 +314,7 @@
     <span class="brandpill"><img id="brandLogo" alt="EPM"></span>
     <div class="brand">Informe de Campo<small>Sitios de torre · líneas de transmisión</small></div>
     <div class="spacer"></div>
-    <span class="verbadge" id="verBadge">v19</span>
+    <span class="verbadge" id="verBadge">v20</span>
     <button class="icon" id="btnProjects">Proyectos</button>
   </header>
 
@@ -348,7 +348,7 @@
   <div class="datos-body">
     <div class="datos-card">
       <div class="dh">Versión de la app</div>
-      <div class="dv">Estás en <b id="datosVer">v19</b>.</div>
+      <div class="dv">Estás en <b id="datosVer">v20</b>.</div>
       <button class="dbtn" onclick="checkUpdates()">🔄 Buscar actualizaciones</button>
       <div class="dnote" id="updStatus"></div>
     </div>
@@ -476,7 +476,7 @@ const OPC = {
 /* ===================== ESTADO / PERSISTENCIA ===================== */
 const KEY='ivc_torres_v1';
 const APP_ID='LT', APP_NOMBRE='Líneas de transmisión (torres)', SCHEMA_VER=2;
-const APP_VER='v19';
+const APP_VER='v20';
 let _editMode=false;
 const ROLES=['Geología - Geotecnia','Estructuras - Obras Civiles','Hidrología - Hidráulica'];
 const FOTO_CATS=['Ubicación','Geología','Geotecnia','Hidráulica','Amenazas','Otros'];
@@ -557,7 +557,8 @@ function render(){
   if(!_editMode){
     host().innerHTML = readHTML(s);
     bind();
-    pPreload(s.fotos||[]).then(()=>{ var rb=document.getElementById('readBody'); if(rb)rb.innerHTML=siteReport(s); pClearCache(); }).catch(function(){});
+    var _rb=document.getElementById('readBody'); if(_rb)_rb.innerHTML=siteReport(s,true);
+    pHydrate();
     return;
   }
   host().innerHTML = formHTML(s);
@@ -1749,7 +1750,7 @@ function reportHTML(p,sites){
       <button class="btn ghost" onclick="closeReport()">Volver</button>
     </div>${reportInner(p,sites)}`;
 }
-function siteReport(s){
+function siteReport(s,screen){
   const _pt=(s.tipoSitio==='vano'?'el punto':'el punto de torre');const recTxt=s.rec==='mantener'?('MANTENER '+_pt):s.rec==='mover'?('MOVER '+_pt):'Sin recomendación';
   const recBg=s.rec==='mantener'?'background:#eaf6ee;color:#0f7a34':s.rec==='mover'?'background:#fdeede;color:#a3540c':'background:#eef1f4;color:#556';
   let mv='';
@@ -1769,7 +1770,7 @@ function siteReport(s){
   const vanos=(vano(s.vanos.arriba,'Aguas arriba')+vano(s.vanos.abajo,'Aguas abajo'));
   const vanosSec=vanos?`<div class="rpt-sec"><h5>Vanos adyacentes</h5>${vanos}</div>`:'';
   const obs=(s.obs&&s.obs.trim())?`<div class="rpt-sec"><h5>Observaciones</h5><div class="kv">${esc(s.obs)}</div></div>`:'';
-  const fotos=s.fotos.length?`<div class="rpt-sec"><h5>Registro fotográfico</h5><div class="rpt-photos">${s.fotos.map(f=>`<figure style="margin:0"><img src="${pData(f)}" style="width:100%;height:auto;display:block;border-radius:6px">${f.comentario?`<figcaption style="font-size:11.5px;color:#444;margin-top:3px">${esc(f.comentario)}</figcaption>`:''}</figure>`).join('')}</div></div>`:'';
+  const fotos=s.fotos.length?`<div class="rpt-sec"><h5>Registro fotográfico</h5><div class="rpt-photos">${s.fotos.map(f=>`<figure style="margin:0"><img class="phimg" data-pid="${screen?(f.id||''):''}" src="${screen?(f.data||''):pData(f)}" style="width:100%;height:auto;display:block;border-radius:6px">${f.comentario?`<figcaption style="font-size:11.5px;color:#444;margin-top:3px">${esc(f.comentario)}</figcaption>`:''}</figure>`).join('')}</div></div>`:'';
   const coord=s.data.lat?`${s.data.lat}, ${s.data.lon}${s.data.elev?' · '+s.data.elev+' m':''}`:'coordenadas no registradas';
   return `<div class="rpt-site">
     <h2>${esc(s.sitioId||'(sin ID)')} ${s.data.variante?`· ${esc(s.data.variante)}`:''}</h2>
