@@ -319,7 +319,7 @@
     <span class="brandpill"><img id="brandLogo" alt="EPM"></span>
     <div class="brand">Informe de Campo<small>Sitios de torre · líneas de transmisión</small></div>
     <div class="spacer"></div>
-    <span class="verbadge" id="verBadge">v21</span>
+    <span class="verbadge" id="verBadge">v24</span>
     <button class="icon" id="btnProjects">Proyectos</button>
   </header>
 
@@ -353,9 +353,16 @@
   <div class="datos-body">
     <div class="datos-card">
       <div class="dh">Versión de la app</div>
-      <div class="dv">Estás en <b id="datosVer">v21</b>.</div>
+      <div class="dv">Estás en <b id="datosVer">v24</b>.</div>
       <button class="dbtn" onclick="checkUpdates()">🔄 Buscar actualizaciones</button>
       <div class="dnote" id="updStatus"></div>
+    </div>
+    <div class="datos-card">
+      <div class="dh">Redacción con IA (opcional)</div>
+      <div class="dv">Para que el Word redacte en prosa natural. Usa tu propia API key de Anthropic; se guarda <b>solo en este equipo</b> (nunca se sube a GitHub). <b>Ojo EPM:</b> al usarla, los datos del sitio se envían a la API de Anthropic — confirma que puedes hacerlo con información interna.</div>
+      <div class="field"><label>API key (Anthropic)</label><input type="password" id="aiKey" placeholder="sk-ant-..." autocomplete="off" oninput="localStorage.setItem('lt_ai_key',this.value.trim())"></div>
+      <div class="field"><label>Modelo</label><input type="text" id="aiModel" placeholder="claude-sonnet-4-5" autocomplete="off" oninput="localStorage.setItem('lt_ai_model',this.value.trim())"></div>
+      <div class="dnote">Si el modelo da error, cámbialo por uno de tu cuenta (p. ej. claude-3-5-haiku-latest).</div>
     </div>
     <div class="datos-card">
       <div class="dh">Respaldo (backup)</div>
@@ -481,7 +488,7 @@ const OPC = {
 /* ===================== ESTADO / PERSISTENCIA ===================== */
 const KEY='ivc_torres_v1';
 const APP_ID='LT', APP_NOMBRE='Líneas de transmisión (torres)', SCHEMA_VER=2;
-const APP_VER='v21';
+const APP_VER='v24';
 let _editMode=false;
 const ROLES=['Geología - Geotecnia','Estructuras - Obras Civiles','Hidrología - Hidráulica'];
 const FOTO_CATS=['Ubicación','Geología','Geotecnia','Hidráulica','Amenazas','Otros'];
@@ -1376,7 +1383,7 @@ async function exportKMZ(){
   }catch(e){ pClearCache(); alert('No se pudo exportar el KMZ: '+e.message); }
 }
 function _kx(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
-function openDatos(){document.getElementById('appView').style.display='none';document.getElementById('datosView').style.display='block';var v=document.getElementById('datosVer');if(v)v.textContent=APP_VER;_datosStorage();}
+function openDatos(){document.getElementById('appView').style.display='none';document.getElementById('datosView').style.display='block';var v=document.getElementById('datosVer');if(v)v.textContent=APP_VER;var k=document.getElementById('aiKey');if(k)k.value=localStorage.getItem('lt_ai_key')||'';var md=document.getElementById('aiModel');if(md)md.value=localStorage.getItem('lt_ai_model')||'';_datosStorage();}
 function closeDatos(){document.getElementById('datosView').style.display='none';document.getElementById('appView').style.display='block';}
 async function _datosStorage(){const el=document.getElementById('datosStorage');if(!el)return;try{if(navigator.storage&&navigator.storage.estimate){const e=await navigator.storage.estimate();const u=(e.usage/1048576).toFixed(0),q=(e.quota/1048576).toFixed(0);el.textContent=u+' MB usados'+(q>0?(' de ~'+q+' MB disponibles'):'');}else{el.textContent='No disponible en este navegador.';}}catch(e){el.textContent='—';}}
 async function checkUpdates(){
@@ -1636,9 +1643,8 @@ function buildEpmDocxEntries(cfg){
     s.domains.forEach(d=>{
       if(!d.kv.length)return;
       body+=_para(_run(d.h,{b:true,color:'2F6D20',sz:16}),{after:20});
-      let rows='';d.kv.forEach(kv=>{rows+=_trow(_tcell(_run(kv[0],{b:true,sz:15}),{w:3400,shd:'F3F6F3'})+_tcell(_run(kv[1],{sz:15}),{w:6000}));});
-      body+=_tbl(rows,[3400,6000],{width:9400});
-      body+=_para('',{after:40});
+      const _cl=d.kv.map((kv,i)=>{let lab=kv[0];if(i>0)lab=lab.charAt(0).toLowerCase()+lab.slice(1);return lab+', '+kv[1];});
+      body+=_para(_run(d.prose||(_cl.join('; ')+'.'),{sz:16}),{after:100});
     });
     if(s.fotos&&s.fotos.length){
       body+=_para(_run('Registro fotográfico',{b:true,color:'2F6D20',sz:16}),{after:20});
@@ -1675,6 +1681,34 @@ function buildEpmDocxEntries(cfg){
 
 /* ---- Adaptador TORRES → formato EPM ---- */
 function mesAnio(){const M=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];const d=new Date();return M[d.getMonth()]+' '+d.getFullYear();}
+function _lc(v){return v?(v.charAt(0).toLowerCase()+v.slice(1)):v;}
+function _lista(a){a=(a||[]).filter(x=>x&&x!=='Ninguno'&&x!=='Ninguna');if(!a.length)return '';if(a.length===1)return _lc(a[0]);return a.slice(0,-1).map(_lc).join(', ')+' y '+_lc(a[a.length-1]);}
+const PROSE={
+ 'topo.posicion':v=>'el sitio se localiza en '+_lc(v),
+ 'topo.pend':v=>'la pendiente del terreno es '+_lc(v),
+ 'geo.material':v=>'el material dominante corresponde a '+_lc(v),
+ 'geo.procesos':a=>{const l=_lista(a);return l?('se observan procesos morfodinámicos ('+l+')'):'no se observan procesos morfodinámicos activos';},
+ 'geo.inest':a=>{const l=_lista(a);return l?('con evidencias de inestabilidad como '+l):'sin evidencias de inestabilidad';},
+ 'gtc.estab':v=>'la ladera se considera '+_lc(v),
+ 'gtc.tiposuelo':v=>'con suelo de tipo '+_lc(v),
+ 'gtc.humedad':v=>({'Seco':'en condición seca','Húmedo':'con presencia de humedad','Saturado / afloramiento':'saturado, con afloramiento de agua','No pude ver':'sin observación de la humedad'}[v]||('humedad '+_lc(v))),
+ 'hid.cuerpo':v=>v==='Ninguno'?'no se identifican cuerpos de agua cercanos':'se identifica un cuerpo de agua cercano ('+_lc(v)+')',
+ 'hid.distcuerpo':v=>'ubicado a '+v,
+ 'hid.socav':v=>'con riesgo de socavación o inundación '+_lc(v),
+ 'hid.manejoag':v=>({'Sí':'el sitio requiere manejo de aguas','No':'el sitio no requiere manejo de aguas','No pude ver':'no fue posible evaluar el manejo de aguas'}[v]||''),
+ 'civ.acceso':v=>({'Vía existente':'el acceso al sitio se realiza por vía existente','Adecuación menor':'el acceso requiere adecuaciones menores','Requiere apertura':'el acceso requiere apertura de vía','Muy difícil / helicóptero':'el acceso es muy difícil, con posible uso de helicóptero'}[v]||('acceso '+_lc(v))),
+ 'civ.patio':v=>'el espacio para el patio de torre es '+_lc(v),
+ 'civ.servid':v=>({'Ninguna':'no hay viviendas o estructuras en la servidumbre','Fuera de la servidumbre':'existen estructuras cercanas, por fuera de la servidumbre','Dentro de la servidumbre (obliga a mover)':'se identifican estructuras dentro de la servidumbre, lo que obliga a reubicar el punto'}[v]||('servidumbre '+_lc(v))),
+ 'civ.interf':a=>{const l=_lista(a);return l?('con interferencias por '+l):'sin otras interferencias';},
+ 'amenaza.inund':v=>'la amenaza por inundación '+_niv(v),
+ 'amenaza.mm':v=>'la amenaza por movimientos en masa '+_niv(v),
+ 'amenaza.torrencial':v=>'la amenaza por avenidas torrenciales '+_niv(v),
+};
+function _niv(v){const m={'Alto':'es alta','Medio':'es media','Bajo':'es baja','No registra':'no se registra','No identificado':'no se identifica'};return m[v]||('es '+_lc(v));}
+function _clause(key,label,v){const f=PROSE[key];if(f)return f(v);const val=Array.isArray(v)?_lista(v):v;return _lc(label)+' '+val;}
+function _pjoin(cl){cl=(cl||[]).filter(Boolean);if(!cl.length)return '';const s=cl.join('; ');return s.charAt(0).toUpperCase()+s.slice(1)+'.';}
+function _cimProse(cim){return _pjoin([cim.tipo.length?('se recomienda cimentación tipo '+_lista(cim.tipo)):'',cim.cons.length?('con consideraciones de '+_lista(cim.cons)):'']);}
+function _obrasProse(a){const l=_lista((a||[]).filter(x=>x!=='No requiere'));return l?('Se plantean obras de estabilización o protección: '+l+'.'):'No se requieren obras de estabilización.';}
 function torresCfg(p){
   const sites=p.sitios;
   const meta=[['Proyecto',p.nombre||'—'],['Contrato / OT',p.contrato||'—'],['Línea / circuito',p.linea||'—'],['Tramo',p.tramo||'—'],['Responsables',respText(p)],['N.º de sitios',String(sites.length)]];
@@ -1691,17 +1725,17 @@ function torresCfg(p){
       const T=[ids[0]||'1ª torre', ids[1]||'2ª torre'];
       [0,1].forEach(i=>{ const st=_lado(s,i);
         const rt=st.rec==='mantener'?'MANTENER el punto':st.rec==='mover'?'MOVER el punto':'Sin recomendación';
-        domains.push({h:'▶ Hacia '+T[i],kv:[['Recomendación',rt]]});
-        SCHEMA.forEach(dom=>{const kv=[];dom.campos.forEach(c=>{if(c.cond&&!c.cond(st))return;const v=st.data[dom.id+'.'+c.id];if(hasVal(v))kv.push([c.label,Array.isArray(v)?v.join(', '):String(v)]);});if(kv.length)domains.push({h:'Hacia '+T[i]+' · '+dom.titulo,kv});});
-        if(st.cim.tipo.length||st.cim.cons.length){const ck=[];if(st.cim.tipo.length)ck.push(['Tipo',st.cim.tipo.join(', ')]);if(st.cim.cons.length)ck.push(['Consideraciones',st.cim.cons.join(', ')]);domains.push({h:'Hacia '+T[i]+' · Cimentación',kv:ck});}
-        if(st.obras.length)domains.push({h:'Hacia '+T[i]+' · Obras',kv:[['Obras',st.obras.join(', ')]]});
+        domains.push({h:'▶ Hacia '+T[i],kv:[['Recomendación',rt]],prose:rt+'.'});
+        SCHEMA.forEach(dom=>{const kv=[];const cl=[];dom.campos.forEach(c=>{if(c.cond&&!c.cond(st))return;const v=st.data[dom.id+'.'+c.id];if(hasVal(v)){kv.push([c.label,Array.isArray(v)?v.join(', '):String(v)]);cl.push(_clause(dom.id+'.'+c.id,c.label,v));}});if(kv.length)domains.push({h:'Hacia '+T[i]+' · '+dom.titulo,kv,prose:_pjoin(cl)});});
+        if(st.cim.tipo.length||st.cim.cons.length){const ck=[];if(st.cim.tipo.length)ck.push(['Tipo',st.cim.tipo.join(', ')]);if(st.cim.cons.length)ck.push(['Consideraciones',st.cim.cons.join(', ')]);domains.push({h:'Hacia '+T[i]+' · Cimentación',kv:ck,prose:_cimProse(st.cim)});}
+        if(st.obras.length)domains.push({h:'Hacia '+T[i]+' · Obras',kv:[['Obras',st.obras.join(', ')]],prose:_obrasProse(st.obras)});
       });
       if(s.obs&&s.obs.trim())domains.push({h:'Observaciones',kv:[['Notas',s.obs.trim()]]});
       rec={txt:'Punto intermedio (entre torres) — recomendación por lado',shd:'EEF1F4',col:'44515E'};
     } else {
-      SCHEMA.forEach(dom=>{const kv=[];dom.campos.forEach(c=>{if(c.cond&&!c.cond(s))return;const v=s.data[dom.id+'.'+c.id];if(hasVal(v))kv.push([c.label,Array.isArray(v)?v.join(', '):String(v)]);});if(kv.length)domains.push({h:dom.titulo,kv});});
-      const cimkv=[];if(s.cim.tipo.length)cimkv.push(['Tipo',s.cim.tipo.join(', ')]);if(s.cim.cons.length)cimkv.push(['Consideraciones',s.cim.cons.join(', ')]);if(cimkv.length)domains.push({h:'Cimentación',kv:cimkv});
-      if(s.obras.length)domains.push({h:'Obras de estabilización / protección',kv:[['Obras',s.obras.join(', ')]]});
+      SCHEMA.forEach(dom=>{const kv=[];const cl=[];dom.campos.forEach(c=>{if(c.cond&&!c.cond(s))return;const v=s.data[dom.id+'.'+c.id];if(hasVal(v)){kv.push([c.label,Array.isArray(v)?v.join(', '):String(v)]);cl.push(_clause(dom.id+'.'+c.id,c.label,v));}});if(kv.length)domains.push({h:dom.titulo,kv,prose:_pjoin(cl)});});
+      const cimkv=[];if(s.cim.tipo.length)cimkv.push(['Tipo',s.cim.tipo.join(', ')]);if(s.cim.cons.length)cimkv.push(['Consideraciones',s.cim.cons.join(', ')]);if(cimkv.length)domains.push({h:'Cimentación',kv:cimkv,prose:_cimProse(s.cim)});
+      if(s.obras.length)domains.push({h:'Obras de estabilización / protección',kv:[['Obras',s.obras.join(', ')]],prose:_obrasProse(s.obras)});
       const vk=[];const vano=(v,t)=>{const parts=[];if(v.terreno)parts.push('terreno '+v.terreno);if(v.cruces&&v.cruces.length)parts.push('cruza: '+v.cruces.join(', '));if(parts.length)vk.push([t,parts.join(' · ')]);};vano(s.vanos.arriba,'Aguas arriba');vano(s.vanos.abajo,'Aguas abajo');if(vk.length)domains.push({h:'Vanos adyacentes',kv:vk});
       if(s.obs&&s.obs.trim())domains.push({h:'Observaciones',kv:[['Notas',s.obs.trim()]]});
       if(s.rec==='mantener')rec={txt:'MANTENER el punto de torre',shd:'EAF6EE',col:'0F7A34'};
@@ -1712,17 +1746,50 @@ function torresCfg(p){
   });
   return {titulo:p.nombre||'Proyecto',subtitulo:p.epmSub||'Recorrido de campo — Sitios de torre',anexoTipo:p.epmAnexo||'Obras Civiles',codigo:p.epmCodigo||p.contrato||'RGIS-FO-R15-CIV-000',area:p.epmArea||'Área Planeación y Formulación Proyectos T&D Energía',fecha:p.epmFecha||mesAnio(),logoB64:LOGO_B64,metaRows:meta,summary,projFotos:(p.fotos||[]),sites:S};
 }
-async function exportWord(){
+function _aiOverlay(i,n){let o=document.getElementById('aiOv');if(!o){o=document.createElement('div');o.id='aiOv';o.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:9999;color:#fff;font-weight:700;font-size:17px;text-align:center;padding:20px';document.body.appendChild(o);}o.innerHTML='✨ Redactando con IA…'+(n?('<br><span style="font-weight:400;font-size:13px;opacity:.85">Sitio '+i+' de '+n+'</span>'):'');return o;}
+function _aiHide(){const o=document.getElementById('aiOv');if(o)o.remove();}
+async function aiEnhance(cfg,onprog){
+  const key=(localStorage.getItem('lt_ai_key')||'').trim();
+  if(!key)throw new Error('NOKEY');
+  const model=(localStorage.getItem('lt_ai_model')||'').trim()||'claude-sonnet-4-5';
+  const sys='Eres un ingeniero geotécnico colombiano que redacta un informe técnico formal de inspección de líneas de transmisión. Escribe en español técnico, claro y en tercera persona impersonal. No inventes ni agregues datos: usa solo lo entregado. Redacta un párrafo por sección, fluido y natural, sin listas ni viñetas.';
+  for(let i=0;i<cfg.sites.length;i++){
+    const s=cfg.sites[i]; if(onprog)onprog(i+1,cfg.sites.length);
+    const doms=s.domains.filter(d=>d.kv&&d.kv.length).map(d=>({seccion:d.h,datos:d.kv.map(kv=>kv[0]+': '+kv[1])}));
+    if(!doms.length)continue;
+    const usr='Para CADA sección, redacta UN párrafo técnico coherente que integre sus datos (no los listes; redáctalos en prosa). Devuelve EXCLUSIVAMENTE un objeto JSON válido donde cada clave sea el nombre EXACTO de la sección y su valor el párrafo. Nada de texto extra ni markdown.\n\nSitio: '+(s.tituloCorto||s.titulo)+'\nSecciones:\n'+JSON.stringify(doms);
+    let r;
+    try{ r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model,max_tokens:2000,system:sys,messages:[{role:'user',content:usr}]})}); }
+    catch(e){ throw new Error('RED'); }
+    if(!r.ok){ if(r.status===401)throw new Error('KEY'); let t='';try{t=((await r.json()).error||{}).message||'';}catch(_){}
+      if(i===0)throw new Error('API '+r.status+(t?(': '+t):'')); else continue; }
+    let j;try{j=await r.json();}catch(_){continue;}
+    const txt=(j.content||[]).filter(x=>x.type==='text').map(x=>x.text).join('');
+    let obj=null;const m=txt.match(/\{[\s\S]*\}/);if(m){try{obj=JSON.parse(m[0]);}catch(_){}}
+    if(obj){s.domains.forEach(d=>{if(obj[d.h]&&typeof obj[d.h]==='string')d.prose=obj[d.h];});}
+  }
+}
+async function exportWord(useAI){
   const p=curProj();if(!p||!p.sitios.length){alert('No hay sitios para exportar.');return;}
   try{
     await pPreload(_allPhotos([p]));
-    const blob=new Blob(zipChunks(buildEpmDocxEntries(torresCfg(p))),{type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
+    const cfg=torresCfg(p);
+    if(useAI){
+      _aiOverlay();
+      try{ await aiEnhance(cfg,(i,n)=>_aiOverlay(i,n)); _aiHide(); }
+      catch(e){ _aiHide();
+        if(e.message==='NOKEY'){ alert('Primero pega tu API key en 📁 Datos → Redacción con IA.'); pClearCache(); return; }
+        const msg=e.message==='KEY'?'La API key no es válida (revísala en Datos). Se generará con redacción por plantillas.':e.message==='RED'?'Sin conexión o bloqueo de red. Se generará con redacción por plantillas.':'La IA no respondió ('+e.message+'). Se generará con redacción por plantillas.';
+        alert(msg);
+      }
+    }
+    const blob=new Blob(zipChunks(buildEpmDocxEntries(cfg)),{type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
     const url=URL.createObjectURL(blob);const a=document.createElement('a');
     const nm=(p.nombre||'proyecto').replace(/[^\w\- ]+/g,'').trim().replace(/\s+/g,'-')||'proyecto';
     a.href=url;a.download='Informe-'+nm+'.docx';document.body.appendChild(a);a.click();a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),1500);
     pClearCache();
-  }catch(e){pClearCache();alert('No se pudo generar el Word: '+e.message);}
+  }catch(e){_aiHide();pClearCache();alert('No se pudo generar el Word: '+e.message);}
 }
 
 
@@ -1787,7 +1854,8 @@ function reportSummary(sites){
 function reportHTML(p,sites){
   return `<div class="toolbar-print noprint">
       <button class="btn acc" onclick="window.print()">Imprimir / Guardar PDF</button>
-      <button class="btn acc" onclick="exportWord()">Exportar Word</button>
+      <button class="btn acc" onclick="exportWord(false)">Exportar Word</button>
+      <button class="btn acc" onclick="exportWord(true)" style="background:#6d3fb0">✨ Word con IA</button>
       <button class="btn ghost" onclick="closeReport()">Volver</button>
     </div>${reportInner(p,sites)}`;
 }
